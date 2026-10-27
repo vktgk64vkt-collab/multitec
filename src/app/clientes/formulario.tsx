@@ -65,7 +65,7 @@ export default function FormularioCliente() {
   }
 
   return (
-    <ScrollView contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen
         options={{
           title: idCliente === null ? 'Nuevo cliente' : 'Editar cliente',

@@ -62,3 +62,11 @@ export async function crearFactura(db: SQLiteDatabase, proyectoId: number, ncf: 
 export function marcarPagada(db: SQLiteDatabase, id: number, pagada: boolean) {
   return db.runAsync('UPDATE facturas SET pagada = ? WHERE id = ?', pagada ? 1 : 0, id);
 }
+
+export function resumenFacturas(db: SQLiteDatabase) {
+  return db.getFirstAsync<{ por_cobrar: number; cobrado: number }>(
+    `SELECT COALESCE(SUM(CASE WHEN pagada = 0 THEN total_cts END), 0) AS por_cobrar,
+            COALESCE(SUM(CASE WHEN pagada = 1 THEN total_cts END), 0) AS cobrado
+     FROM facturas`
+  );
+}

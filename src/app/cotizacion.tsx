@@ -93,7 +93,7 @@ export default function Cotizacion() {
   }
 
   return (
-    <ScrollView contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Cotización' }} />
 
       {lineas.length === 0 && (

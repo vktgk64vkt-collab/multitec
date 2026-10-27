@@ -64,7 +64,7 @@ export default function Levantamiento() {
   }
 
   return (
-    <ScrollView contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Levantamiento' }} />
       <TextInput style={estilos.campo} placeholder="Área (ej. Entrada, Bodega)" value={area} onChangeText={setArea} />
       <TextInput style={estilos.campo} placeholder="Equipo (ej. Cámara domo 4MP)" value={equipo} onChangeText={setEquipo} />

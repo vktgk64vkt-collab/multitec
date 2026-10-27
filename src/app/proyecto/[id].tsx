@@ -24,7 +24,7 @@ export default function DetalleProyecto() {
   }
 
   return (
-    <ScrollView contentContainerStyle={estilos.contenedor}>
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor}>
       <Text style={estilos.nombre}>{proyecto.nombre}</Text>
       <Text style={estilos.detalle}>
         {proyecto.cliente} · {proyecto.tipo}

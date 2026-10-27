@@ -59,7 +59,7 @@ export default function Factura() {
   }
 
   return (
-    <ScrollView contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Factura' }} />
 
       {!factura ? (

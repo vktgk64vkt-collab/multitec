@@ -39,7 +39,7 @@ export default function Bitacora() {
   }
 
   return (
-    <ScrollView contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Bitácora' }} />
       <TextInput
         style={[estilos.campo, estilos.texto]}

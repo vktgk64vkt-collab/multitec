@@ -29,7 +29,7 @@ export default function NuevoProyecto() {
   }
 
   return (
-    <ScrollView contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <TextInput style={estilos.campo} placeholder="Nombre del proyecto" value={nombre} onChangeText={setNombre} />
 
       <Text style={estilos.etiqueta}>Cliente</Text>

@@ -49,7 +49,7 @@ export default function DetalleCliente() {
   ];
 
   return (
-    <ScrollView contentContainerStyle={estilos.contenedor}>
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor}>
       <Text style={estilos.nombre}>{cliente.nombre}</Text>
       {datos
         .filter((d) => d.valor)
