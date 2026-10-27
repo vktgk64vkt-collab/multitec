@@ -39,3 +39,5 @@ jobs:
         with:
           name: multitec-ipa
           path: multitec.ipa
+
+# build manual: gh workflow run ios-unsigned.yml
