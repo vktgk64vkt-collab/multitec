@@ -5,8 +5,8 @@ on: workflow_dispatch
 
 jobs:
   build:
-    runs-on: macos-15
-    timeout-minutes: 60
+    runs-on: macos-15-intel
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
