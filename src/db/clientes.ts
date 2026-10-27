@@ -45,6 +45,10 @@ export function actualizarCliente(db: SQLiteDatabase, id: number, d: DatosClient
   );
 }
 
-export function eliminarCliente(db: SQLiteDatabase, id: number) {
-  return db.runAsync('DELETE FROM clientes WHERE id = ?', id);
+/** Devuelve false si el cliente tiene proyectos: borrarlo arrastraría sus facturas y cotizaciones. */
+export async function eliminarCliente(db: SQLiteDatabase, id: number): Promise<boolean> {
+  const r = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM proyectos WHERE cliente_id = ?', id);
+  if ((r?.n ?? 0) > 0) return false;
+  await db.runAsync('DELETE FROM clientes WHERE id = ?', id);
+  return true;
 }

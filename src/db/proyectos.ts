@@ -40,14 +40,14 @@ export async function duplicarProyecto(db: SQLiteDatabase, id: number) {
   let nuevo = 0;
   await db.withTransactionAsync(async () => {
     const r = await db.runAsync(
-      `INSERT INTO proyectos (cliente_id, nombre, tipo, impuesto_pct, condiciones, precios_con_itbis, nivel_precio)
-       SELECT cliente_id, nombre || ' (copia)', tipo, impuesto_pct, condiciones, precios_con_itbis, nivel_precio FROM proyectos WHERE id = ?`,
+      `INSERT INTO proyectos (cliente_id, nombre, tipo, impuesto_pct, condiciones, precios_con_itbis, nivel_precio, propuesta_intro)
+       SELECT cliente_id, nombre || ' (copia)', tipo, impuesto_pct, condiciones, precios_con_itbis, nivel_precio, propuesta_intro FROM proyectos WHERE id = ?`,
       id
     );
     nuevo = r.lastInsertRowId;
     await db.runAsync(
-      `INSERT INTO cotizacion_items (proyecto_id, descripcion, cantidad, precio_cts, descuento_pct, tipo, costo_cts, item_id)
-       SELECT ?, descripcion, cantidad, precio_cts, descuento_pct, tipo, costo_cts, item_id FROM cotizacion_items
+      `INSERT INTO cotizacion_items (proyecto_id, descripcion, cantidad, precio_cts, descuento_pct, tipo, costo_cts, item_id, detalle)
+       SELECT ?, descripcion, cantidad, precio_cts, descuento_pct, tipo, costo_cts, item_id, detalle FROM cotizacion_items
        WHERE proyecto_id = ? ORDER BY id`,
       nuevo, id
     );
@@ -65,4 +65,21 @@ export async function obtenerCondiciones(db: SQLiteDatabase, id: number) {
 
 export function guardarCondiciones(db: SQLiteDatabase, id: number, texto: string) {
   return db.runAsync('UPDATE proyectos SET condiciones = ? WHERE id = ?', texto.trim() || null, id);
+}
+
+export async function obtenerPropuestaIntro(db: SQLiteDatabase, id: number) {
+  const r = await db.getFirstAsync<{ propuesta_intro: string | null }>('SELECT propuesta_intro FROM proyectos WHERE id = ?', id);
+  return r?.propuesta_intro ?? '';
+}
+
+export function guardarPropuestaIntro(db: SQLiteDatabase, id: number, texto: string) {
+  return db.runAsync('UPDATE proyectos SET propuesta_intro = ? WHERE id = ?', texto.trim() || null, id);
+}
+
+/** Borra el proyecto con su levantamiento, cotización y bitácora. Devuelve false si tiene factura (hay que anularla y conservarla). */
+export async function eliminarProyecto(db: SQLiteDatabase, id: number): Promise<boolean> {
+  const f = await db.getFirstAsync('SELECT 1 FROM facturas WHERE proyecto_id = ?', id);
+  if (f) return false;
+  await db.runAsync('DELETE FROM proyectos WHERE id = ?', id);
+  return true;
 }

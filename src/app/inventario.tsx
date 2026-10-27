@@ -1,10 +1,18 @@
 import { Stack } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
-import { actualizarProducto, crearProducto, eliminarProducto, listarCatalogo, type DatosProducto, type Producto } from '@/db/catalogo';
+import {
+  actualizarProducto,
+  crearProducto,
+  eliminarProducto,
+  listarCatalogo,
+  sumarStock,
+  type DatosProducto,
+  type Producto,
+} from '@/db/catalogo';
 import { aCentavos, formatear, ITBIS_PCT, MARGENES_BASE, precioDesdeCosto, preciosArticulo } from '@/dinero';
 import {
   armarNombre,
@@ -18,7 +26,7 @@ import {
   type Partes,
 } from '@/nomenclatura';
 import { color } from '@/tema';
-import { Boton, Campo, Etiqueta, Tarjeta } from '@/ui';
+import { Boton, Campo, Chip, Etiqueta, Tarjeta } from '@/ui';
 
 const STOCK_BAJO = 2;
 const BASE = MARGENES_BASE.map(String);
@@ -41,6 +49,7 @@ export default function Inventario() {
   const [margenes, setMargenes] = useState<string[]>(BASE);
   const [precio, setPrecio] = useState('');
   const [stock, setStock] = useState('');
+  const [descripcion, setDescripcion] = useState('');
 
   const cargar = useCallback(() => listarCatalogo(db, busqueda).then(setProductos), [db, busqueda]);
   useEffect(() => {
@@ -62,6 +71,17 @@ export default function Inventario() {
     setMargenes(BASE);
     setPrecio('');
     setStock('');
+    setDescripcion('');
+  }
+
+  /** Deja el formulario listo para otro artículo parecido: misma familia, casillas y márgenes; sin modelo, costo ni stock. */
+  function seguirConSimilar() {
+    setEditando(null);
+    setPartes((p) => ({ ...p, modelo: '' }));
+    setCosto('');
+    setPrecio('');
+    setStock('');
+    setDescripcion('');
   }
 
   function elegirFamilia(nombreFamilia: string) {
@@ -73,8 +93,7 @@ export default function Inventario() {
     setPartes((p) => ({ ...p, [c]: valor }));
   }
 
-  function editar(p: Producto) {
-    setEditando(p);
+  function cargarEnFormulario(p: Producto) {
     setFamilia(p.categoria && FAMILIAS[p.categoria] ? p.categoria : NOMBRES_FAMILIAS[0]);
     setPartes(
       p.f_tipo === null
@@ -91,10 +110,24 @@ export default function Inventario() {
     setCosto(p.costo_cts ? String(p.costo_cts / 100) : '');
     setMargenes(p.margen1_pct === null ? BASE : [p.margen1_pct, p.margen2_pct ?? p.margen1_pct, p.margen3_pct ?? p.margen1_pct].map(String));
     setPrecio(p.precio_cts ? String(p.precio_cts / 100) : '');
+    setDescripcion(p.descripcion ?? '');
+  }
+
+  function editar(p: Producto) {
+    setEditando(p);
+    cargarEnFormulario(p);
     setStock(p.stock === null ? '' : String(p.stock));
   }
 
-  async function guardar() {
+  /** Copia el artículo como uno nuevo (para otro modelo): todo igual menos el modelo y el stock. */
+  function duplicar(p: Producto) {
+    setEditando(null);
+    cargarEnFormulario(p);
+    setPartes((x) => ({ ...x, modelo: '' }));
+    setStock('');
+  }
+
+  async function guardar(seguir = false) {
     const conservar = anterior && sinCasillas;
     if (!conservar) {
       if (nombre === null) {
@@ -105,7 +138,21 @@ export default function Inventario() {
         );
       }
       const repetido = (await listarCatalogo(db)).find((x) => x.id !== editando?.id && x.nombre.trim().toLowerCase() === nombre.toLowerCase());
-      if (repetido) return Alert.alert('Ya existe', `Ese artículo ya está en el inventario:\n${repetido.nombre}`);
+      if (repetido) {
+        // equipo repetido: la cantidad se suma al existente (los servicios no se suman, solo se avisa)
+        if (editando === null && !f.servicio && repetido.tipo === 'equipo') {
+          const cant = Number(stock);
+          if (stock.trim() === '' || !Number.isInteger(cant) || cant < 1) {
+            return Alert.alert('Ya existe', `${repetido.nombre} (${repetido.codigo}) ya está en el inventario. Escribe la cantidad que ingresas y se suma a su stock.`);
+          }
+          await sumarStock(db, repetido.id, cant);
+          Alert.alert('Cantidad sumada', `${repetido.nombre}\n${repetido.codigo}: +${cant}. Stock total: ${(repetido.stock ?? 0) + cant}.`);
+          if (seguir) seguirConSimilar();
+          else limpiar();
+          return cargar();
+        }
+        return Alert.alert('Ya existe', `Ese artículo ya está en el inventario:\n${repetido.nombre} (${repetido.codigo})`);
+      }
     }
     if (costoCts === null) return Alert.alert('Costo inválido', 'Escribe un número, o deja el costo vacío y escribe un precio fijo.');
     const n = stock.trim() === '' || f.servicio ? null : Number(stock);
@@ -125,12 +172,13 @@ export default function Inventario() {
     }
 
     const datos: DatosProducto = conservar
-      ? { ...(editando as Producto), ...precios, stock: n }
+      ? { ...(editando as Producto), ...precios, stock: n, descripcion: descripcion.trim() || null }
       : {
           nombre: nombre as string,
           tipo: f.servicio ? 'servicio' : 'equipo',
           categoria: familia,
           stock: n,
+          descripcion: descripcion.trim() || null,
           ...precios,
           f_tipo: partes.tipo.trim(),
           f_tecnologia: esNA(partes.tecnologia) ? null : partes.tecnologia.trim(),
@@ -141,7 +189,8 @@ export default function Inventario() {
         };
     if (editando === null) await crearProducto(db, datos);
     else await actualizarProducto(db, editando.id, datos);
-    limpiar();
+    if (seguir && editando === null) seguirConSimilar();
+    else limpiar();
     cargar();
   }
 
@@ -169,8 +218,8 @@ export default function Inventario() {
     return [];
   }
 
-  return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+  const formulario = (
+    <View style={estilos.encabezado}>
       <Stack.Screen options={{ title: 'Inventario' }} />
       <Tarjeta>
         <Etiqueta>{editando === null ? 'Nuevo artículo' : 'Editando'}</Etiqueta>
@@ -183,9 +232,7 @@ export default function Inventario() {
         <Etiqueta>Familia</Etiqueta>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={estilos.fila} keyboardShouldPersistTaps="handled">
           {NOMBRES_FAMILIAS.map((n) => (
-            <Pressable key={n} style={[estilos.chip, n === familia && estilos.activa]} onPress={() => elegirFamilia(n)}>
-              <Text style={[estilos.textoChip, n === familia && estilos.textoActivo]}>{n}</Text>
-            </Pressable>
+            <Chip key={n} texto={n} activo={n === familia} onPress={() => elegirFamilia(n)} />
           ))}
         </ScrollView>
 
@@ -197,6 +244,7 @@ export default function Inventario() {
               <Etiqueta>{f.etiquetas[c]}</Etiqueta>
               <Campo
                 placeholder={c === 'modelo' ? 'Escríbelo tal cual (ej. DS-2CD2143G2-I)' : 'Elige una opción o escríbela'}
+                accessibilityLabel={f.etiquetas[c]}
                 value={partes[c]}
                 editable={!noAplica}
                 autoCapitalize={c === 'modelo' ? 'characters' : 'sentences'}
@@ -206,15 +254,9 @@ export default function Inventario() {
               />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={estilos.fila} keyboardShouldPersistTaps="handled">
                 {lista.map((o) => (
-                  <Pressable key={o} style={[estilos.chip, partes[c] === o && estilos.activa]} onPress={() => poner(c, o)}>
-                    <Text style={[estilos.textoChip, partes[c] === o && estilos.textoActivo]}>{o}</Text>
-                  </Pressable>
+                  <Chip key={o} texto={o} activo={partes[c] === o} onPress={() => poner(c, o)} />
                 ))}
-                {c !== 'tipo' ? (
-                  <Pressable style={[estilos.chip, estilos.chipNA, noAplica && estilos.activa]} onPress={() => poner(c, noAplica ? '' : NA)}>
-                    <Text style={[estilos.textoChip, noAplica && estilos.textoActivo]}>N/A</Text>
-                  </Pressable>
-                ) : null}
+                {c !== 'tipo' ? <Chip borde texto="N/A" activo={noAplica} onPress={() => poner(c, noAplica ? '' : NA)} /> : null}
               </ScrollView>
             </View>
           );
@@ -224,6 +266,15 @@ export default function Inventario() {
           <Text style={estilos.vistaEtiqueta}>Nombre del artículo</Text>
           <Text style={estilos.vistaNombre}>{nombre ?? (anterior && sinCasillas ? editando?.nombre : 'Completa todas las casillas (o N/A)')}</Text>
         </View>
+
+        <Etiqueta>Descripción breve (sale en la cotización y la factura)</Etiqueta>
+        <Campo
+          placeholder="Ej. Visión nocturna 30 m, lente 2.8 mm, IP67"
+          value={descripcion}
+          onChangeText={setDescripcion}
+          multilinea
+          style={{ minHeight: 60 }}
+        />
 
         <Etiqueta>Costo (lo que te cuesta, sin ITBIS)</Etiqueta>
         <Campo placeholder="Ej. 500" keyboardType="decimal-pad" value={costo} onChangeText={setCosto} />
@@ -238,6 +289,7 @@ export default function Inventario() {
                   <Text style={estilos.etiquetaNivel}>Precio {i + 1}</Text>
                   <Campo
                     style={estilos.margen}
+                    accessibilityLabel={`Margen del precio ${i + 1}`}
                     keyboardType="decimal-pad"
                     value={m}
                     onChangeText={(t) => setMargenes((v) => v.map((x, j) => (j === i ? t : x)))}
@@ -256,32 +308,57 @@ export default function Inventario() {
         )}
 
         {!f.servicio ? (
-          <Campo placeholder="Stock en bodega (vacío = sin conteo)" keyboardType="number-pad" value={stock} onChangeText={setStock} />
+          <Campo
+            placeholder={editando === null ? 'Cantidad que ingresas (si ya existe, se suma a su stock)' : 'Stock en bodega (vacío = sin conteo)'}
+            keyboardType="number-pad"
+            value={stock}
+            onChangeText={setStock}
+          />
         ) : null}
-        <Boton texto={editando === null ? 'Agregar al inventario' : 'Guardar cambios'} onPress={guardar} />
+        <Boton texto={editando === null ? 'Agregar al inventario' : 'Guardar cambios'} onPress={() => guardar()} />
+        {editando === null ? <Boton tipo="secundario" texto="Agregar y seguir con otro similar" onPress={() => guardar(true)} /> : null}
+        {editando !== null && editando.f_tipo !== null ? <Boton tipo="secundario" texto="Duplicar para otro modelo" onPress={() => duplicar(editando)} /> : null}
         {editando !== null ? <Boton tipo="secundario" texto="Cancelar edición" onPress={limpiar} /> : null}
       </Tarjeta>
 
-      <Campo placeholder="Buscar por nombre o familia" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" />
-
+      <Campo placeholder="Buscar por nombre, código o familia" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" />
       <Etiqueta>Inventario ({productos.length})</Etiqueta>
-      {productos.length === 0 && (
+    </View>
+  );
+
+  return (
+    <FlatList
+      data={productos}
+      keyExtractor={(p) => String(p.id)}
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={estilos.contenedor}
+      keyboardShouldPersistTaps="handled"
+      ListHeaderComponent={formulario}
+      ListEmptyComponent={
         <Text style={estilos.vacio}>
           {busqueda ? 'Sin resultados.' : 'El inventario está vacío. Lo que agregues aquí lo eliges con un toque en el levantamiento y la cotización.'}
         </Text>
-      )}
-      {productos.map((p) => {
+      }
+      ListFooterComponent={productos.length > 0 ? <Text style={estilos.pista}>Toca para editar. Mantén presionado para eliminar.</Text> : undefined}
+      renderItem={({ item: p }) => {
         const [p1, p2, p3] = preciosArticulo(p);
         const auto = p.costo_cts > 0 && p.margen1_pct !== null;
         return (
-          <Pressable key={p.id} onPress={() => editar(p)} onLongPress={() => confirmarEliminar(p)}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={p.nombre}
+            accessibilityHint="Toca para editar. Mantén presionado para eliminar."
+            onPress={() => editar(p)}
+            onLongPress={() => confirmarEliminar(p)}>
             <Tarjeta style={{ gap: 2 }}>
               <Text style={estilos.nombre}>{p.nombre}</Text>
               <Text style={estilos.detalle}>
+                {p.codigo ? `${p.codigo} · ` : ''}
                 {p.categoria ?? 'Sin familia'}
                 {p.costo_cts ? ` · costo ${formatear(p.costo_cts)}` : ''}
                 {p.f_tipo === null ? ' · nombre libre' : ''}
               </Text>
+              {p.descripcion ? <Text style={estilos.detalle}>{p.descripcion}</Text> : null}
               {auto ? (
                 <View style={estilos.precios}>
                   {[p1, p2, p3].map((v, i) => (
@@ -302,21 +379,16 @@ export default function Inventario() {
             </Tarjeta>
           </Pressable>
         );
-      })}
-      {productos.length > 0 && <Text style={estilos.pista}>Toca para editar. Mantén presionado para eliminar.</Text>}
-    </ScrollView>
+      }}
+    />
   );
 }
 
 const estilos = StyleSheet.create({
   contenedor: { padding: 16, gap: 12 },
+  encabezado: { gap: 12 },
   fila: { flexDirection: 'row', gap: 8 },
   casilla: { gap: 6 },
-  chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, backgroundColor: color.fondo },
-  chipNA: { borderWidth: 1, borderColor: color.borde },
-  activa: { backgroundColor: color.primario },
-  textoChip: { color: color.texto },
-  textoActivo: { color: '#fff', fontWeight: '600' },
   deshabilitado: { opacity: 0.5 },
   aviso: { fontSize: 13, color: color.alerta },
   vista: { padding: 12, borderRadius: 12, backgroundColor: color.fondo, gap: 2 },
@@ -333,5 +405,5 @@ const estilos = StyleSheet.create({
   precioNivel: { fontSize: 15, fontWeight: '700', color: color.texto },
   bajo: { color: '#c0262d', fontWeight: '600' },
   vacio: { textAlign: 'center', color: color.suave, marginVertical: 8 },
-  pista: { fontSize: 12, color: color.suave, textAlign: 'center' },
+  pista: { fontSize: 12, color: color.suave, textAlign: 'center', marginTop: 8 },
 });

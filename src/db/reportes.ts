@@ -10,12 +10,12 @@ export async function reporte(db: SQLiteDatabase): Promise<Reporte> {
   return {
     porMes: await db.getAllAsync(
       `SELECT strftime('%Y-%m', creado_en) AS mes, SUM(total_cts) AS total_cts
-       FROM facturas GROUP BY mes ORDER BY mes DESC LIMIT 6`
+       FROM facturas WHERE anulada = 0 GROUP BY mes ORDER BY mes DESC LIMIT 6`
     ),
     porCliente: await db.getAllAsync(
       `SELECT c.nombre AS cliente, SUM(f.total_cts) AS total_cts
        FROM facturas f JOIN proyectos p ON p.id = f.proyecto_id JOIN clientes c ON c.id = p.cliente_id
-       GROUP BY c.id ORDER BY total_cts DESC LIMIT 5`
+       WHERE f.anulada = 0 GROUP BY c.id ORDER BY total_cts DESC LIMIT 5`
     ),
   };
 }

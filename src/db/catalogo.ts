@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { prefijoCodigo } from '../nomenclatura';
+
 export const TIPOS_ITEM = ['equipo', 'servicio'] as const;
 export type TipoItem = (typeof TIPOS_ITEM)[number];
 
@@ -22,34 +24,52 @@ export interface Producto {
   f_especificacion: string | null;
   f_marca: string | null;
   f_modelo: string | null;
+  codigo: string | null; // único, automático: CCTV-0001 (null solo en datos muy anteriores)
+  descripcion: string | null; // breve; se copia a la cotización y a la factura
 }
 
-export type DatosProducto = Omit<Producto, 'id'>;
+export type DatosProducto = Omit<Producto, 'id' | 'codigo'>;
 
 export function listarCatalogo(db: SQLiteDatabase, busqueda = '') {
   return db.getAllAsync<Producto>(
-    'SELECT * FROM catalogo WHERE nombre LIKE ?1 OR categoria LIKE ?1 ORDER BY tipo, nombre COLLATE NOCASE',
+    'SELECT * FROM catalogo WHERE nombre LIKE ?1 OR categoria LIKE ?1 OR codigo LIKE ?1 ORDER BY tipo, nombre COLLATE NOCASE',
     `%${busqueda.trim()}%`
   );
 }
 
-export function crearProducto(db: SQLiteDatabase, d: DatosProducto) {
+/** Siguiente código libre de la familia: PREFIJO-0001, PREFIJO-0002... (el código nunca se reutiliza ni cambia). */
+async function siguienteCodigo(db: SQLiteDatabase, familia: string | null) {
+  const prefijo = prefijoCodigo(familia);
+  const r = await db.getFirstAsync<{ n: number }>(
+    "SELECT COALESCE(MAX(CAST(substr(codigo, length(?1) + 2) AS INTEGER)), 0) AS n FROM catalogo WHERE codigo LIKE ?1 || '-%'",
+    prefijo
+  );
+  return `${prefijo}-${String((r?.n ?? 0) + 1).padStart(4, '0')}`;
+}
+
+export async function crearProducto(db: SQLiteDatabase, d: DatosProducto) {
+  const codigo = await siguienteCodigo(db, d.categoria);
   return db.runAsync(
     `INSERT INTO catalogo (nombre, precio_cts, tipo, categoria, costo_cts, stock, margen1_pct, margen2_pct, margen3_pct,
-       f_tipo, f_tecnologia, f_forma, f_especificacion, f_marca, f_modelo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       f_tipo, f_tecnologia, f_forma, f_especificacion, f_marca, f_modelo, descripcion, codigo)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     d.nombre, d.precio_cts, d.tipo, d.categoria, d.costo_cts, d.stock, d.margen1_pct, d.margen2_pct, d.margen3_pct,
-    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo
+    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, codigo
   );
 }
 
 export function actualizarProducto(db: SQLiteDatabase, id: number, d: DatosProducto) {
   return db.runAsync(
     `UPDATE catalogo SET nombre = ?, precio_cts = ?, tipo = ?, categoria = ?, costo_cts = ?, stock = ?, margen1_pct = ?, margen2_pct = ?, margen3_pct = ?,
-       f_tipo = ?, f_tecnologia = ?, f_forma = ?, f_especificacion = ?, f_marca = ?, f_modelo = ? WHERE id = ?`,
+       f_tipo = ?, f_tecnologia = ?, f_forma = ?, f_especificacion = ?, f_marca = ?, f_modelo = ?, descripcion = ? WHERE id = ?`,
     d.nombre, d.precio_cts, d.tipo, d.categoria, d.costo_cts, d.stock, d.margen1_pct, d.margen2_pct, d.margen3_pct,
-    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, id
+    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, id
   );
+}
+
+/** El artículo ya existía: suma la cantidad que entra al stock (si no llevaba conteo, empieza con esa cantidad). */
+export function sumarStock(db: SQLiteDatabase, id: number, cantidad: number) {
+  return db.runAsync('UPDATE catalogo SET stock = COALESCE(stock, 0) + ? WHERE id = ?', cantidad, id);
 }
 
 export function eliminarProducto(db: SQLiteDatabase, id: number) {

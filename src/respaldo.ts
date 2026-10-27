@@ -4,6 +4,7 @@ import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
 import { VERSION_ACTUAL } from '@/db/migraciones';
+import { CODIGOS_SQL } from '@/nomenclatura';
 
 // Hijas primero al borrar, padres primero al insertar.
 const TABLAS = ['clientes', 'proyectos', 'levantamiento', 'cotizacion_items', 'bitacora', 'facturas', 'factura_items', 'pagos', 'catalogo', 'negocio'];
@@ -34,19 +35,29 @@ export async function restaurarRespaldo(db: SQLite.SQLiteDatabase,uriArchivo: st
     if (v.user_version < 8) {
       filas.set('pagos', (filas.get('facturas') ?? []).filter((f) => f.pagada === 1).map((f) => ({ factura_id: f.id, monto_cts: f.total_cts })));
     }
+    const validas = new Map<string, Set<string>>();
+    for (const t of TABLAS) {
+      const info = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${t})`);
+      validas.set(t, new Set(info.map((c) => c.name)));
+    }
+    // un respaldo viejo puede traer filas huérfanas: se restaura tal cual y las claves se reactivan al final
+    await db.execAsync('PRAGMA foreign_keys = OFF');
     await db.withTransactionAsync(async () => {
       for (const t of [...TABLAS].reverse()) await db.runAsync(`DELETE FROM ${t}`);
       for (const t of TABLAS) {
         for (const f of filas.get(t) ?? []) {
-          const cols = Object.keys(f);
+          const cols = Object.keys(f).filter((c) => validas.get(t)?.has(c)); // nombres del archivo no confiables
           await db.runAsync(
             `INSERT INTO ${t} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`,
             cols.map((c) => f[c] as SQLite.SQLiteBindValue)
           );
         }
       }
+      // respaldo anterior a los códigos: se les asigna uno a cada artículo
+      if (v.user_version < 13) await db.execAsync(CODIGOS_SQL);
     });
   } finally {
+    await db.execAsync('PRAGMA foreign_keys = ON');
     await copia.closeAsync();
   }
 }

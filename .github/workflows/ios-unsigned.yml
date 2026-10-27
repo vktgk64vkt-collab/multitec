@@ -17,6 +17,8 @@ jobs:
         with:
           xcode-version: latest-stable
       - run: npm ci
+      - name: Verificar (tipos, lint y pruebas) antes de compilar
+        run: npm run check
       - run: npx expo prebuild --platform ios --no-install
       - run: pod install
         working-directory: ios

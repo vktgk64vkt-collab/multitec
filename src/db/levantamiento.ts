@@ -31,9 +31,9 @@ export function crearPartida(db: SQLiteDatabase, proyectoId: number, d: DatosPar
     );
     if (!item) return;
     await db.runAsync(
-      `INSERT INTO cotizacion_items (proyecto_id, descripcion, cantidad, precio_cts, tipo, costo_cts, item_id, partida_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      proyectoId, `${d.equipo} (${d.area})`, d.cantidad, precioCts, item.tipo, item.costo_cts, item.id, r.lastInsertRowId
+      `INSERT INTO cotizacion_items (proyecto_id, descripcion, cantidad, precio_cts, tipo, costo_cts, item_id, partida_id, detalle)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      proyectoId, `${d.equipo} (${d.area})`, d.cantidad, precioCts, item.tipo, item.costo_cts, item.id, r.lastInsertRowId, item.descripcion
     );
   });
 }

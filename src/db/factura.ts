@@ -11,6 +11,7 @@ export interface Factura {
   impuesto_cts: number;
   total_cts: number;
   pagada: number;
+  anulada: number;
   vence: string | null;
   creado_en: string;
   proyecto: string;
@@ -34,18 +35,23 @@ export function obtenerFactura(db: SQLiteDatabase, proyectoId: number) {
 }
 
 export function listarLineasFactura(db: SQLiteDatabase, facturaId: number) {
-  return db.getAllAsync<Pick<Linea, 'descripcion' | 'cantidad' | 'precio_cts' | 'descuento_pct' | 'tipo'>>(
-    'SELECT descripcion, cantidad, precio_cts, descuento_pct, tipo FROM factura_items WHERE factura_id = ? ORDER BY id',
+  return db.getAllAsync<Pick<Linea, 'descripcion' | 'cantidad' | 'precio_cts' | 'descuento_pct' | 'tipo' | 'detalle'>>(
+    'SELECT descripcion, cantidad, precio_cts, descuento_pct, tipo, detalle FROM factura_items WHERE factura_id = ? ORDER BY id',
     facturaId
   );
 }
 
-/** Congela líneas y totales de la cotización actual. Devuelve false si no hay nada que facturar. */
-export async function crearFactura(db: SQLiteDatabase, proyectoId: number, ncf: string) {
+export type ResultadoFactura = 'ok' | 'sin_monto' | 'ncf_repetido';
+
+/** Congela líneas y totales de la cotización actual. */
+export async function crearFactura(db: SQLiteDatabase, proyectoId: number, ncf: string): Promise<ResultadoFactura> {
   const lineas = await listarLineas(db, proyectoId);
   const op = await obtenerOpciones(db, proyectoId);
   const t = totales(lineas, op.impuesto_pct, op.con_itbis);
-  if (t.total <= 0) return false;
+  if (t.total <= 0) return 'sin_monto';
+  // un NCF no se repite, tampoco el de una factura anulada (queda consumido)
+  const usado = await db.getFirstAsync('SELECT 1 FROM facturas WHERE ncf = ?', ncf);
+  if (usado) return 'ncf_repetido';
   await db.withTransactionAsync(async () => {
     const f = await db.runAsync(
       "INSERT INTO facturas (proyecto_id, ncf, subtotal_cts, impuesto_cts, total_cts, vence) VALUES (?, ?, ?, ?, ?, date('now', 'localtime', '+30 days'))",
@@ -53,8 +59,8 @@ export async function crearFactura(db: SQLiteDatabase, proyectoId: number, ncf: 
     );
     for (const l of lineas) {
       await db.runAsync(
-        'INSERT INTO factura_items (factura_id, descripcion, cantidad, precio_cts, descuento_pct, tipo) VALUES (?, ?, ?, ?, ?, ?)',
-        f.lastInsertRowId, l.descripcion, l.cantidad, l.precio_cts, l.descuento_pct, l.tipo
+        'INSERT INTO factura_items (factura_id, descripcion, cantidad, precio_cts, descuento_pct, tipo, detalle, item_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        f.lastInsertRowId, l.descripcion, l.cantidad, l.precio_cts, l.descuento_pct, l.tipo, l.detalle, l.item_id
       );
       // el inventario baja al facturar (solo productos con stock controlado; nunca por debajo de 0)
       if (l.item_id !== null) {
@@ -62,6 +68,30 @@ export async function crearFactura(db: SQLiteDatabase, proyectoId: number, ncf: 
       }
     }
     await db.runAsync("UPDATE proyectos SET estado = 'facturado' WHERE id = ?", proyectoId);
+  });
+  return 'ok';
+}
+
+/**
+ * Anula la factura: devuelve el stock, libera el estado del proyecto y la saca de los totales.
+ * El NCF queda consumido y el proyecto no se vuelve a facturar (se duplica el proyecto para eso).
+ * Devuelve false si ya tiene pagos: hay que eliminarlos primero.
+ */
+export async function anularFactura(db: SQLiteDatabase, facturaId: number): Promise<boolean> {
+  const pagos = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM pagos WHERE factura_id = ?', facturaId);
+  if ((pagos?.n ?? 0) > 0) return false;
+  await db.withTransactionAsync(async () => {
+    const f = await db.getFirstAsync<{ proyecto_id: number; anulada: number }>('SELECT proyecto_id, anulada FROM facturas WHERE id = ?', facturaId);
+    if (!f || f.anulada) return;
+    await db.runAsync('UPDATE facturas SET anulada = 1 WHERE id = ?', facturaId);
+    // devuelve lo que bajó al facturar, según las líneas congeladas de la factura (las anteriores a esta versión no guardan el artículo)
+    await db.runAsync(
+      `UPDATE catalogo SET stock = stock + (
+         SELECT COALESCE(SUM(i.cantidad), 0) FROM factura_items i WHERE i.factura_id = ?1 AND i.item_id = catalogo.id)
+       WHERE stock IS NOT NULL AND id IN (SELECT item_id FROM factura_items WHERE factura_id = ?1 AND item_id IS NOT NULL)`,
+      facturaId
+    );
+    await db.runAsync("UPDATE proyectos SET estado = 'cotizado' WHERE id = ?", f.proyecto_id);
   });
   return true;
 }
@@ -85,9 +115,17 @@ async function sincronizarPagada(db: SQLiteDatabase, facturaId: number) {
   );
 }
 
-export async function registrarPago(db: SQLiteDatabase, facturaId: number, montoCts: number) {
+/** Registra el pago. Devuelve false si supera el saldo o la factura está anulada. */
+export async function registrarPago(db: SQLiteDatabase, facturaId: number, montoCts: number): Promise<boolean> {
+  const f = await db.getFirstAsync<{ saldo: number; anulada: number }>(
+    `SELECT f.total_cts - COALESCE((SELECT SUM(monto_cts) FROM pagos WHERE factura_id = f.id), 0) AS saldo, f.anulada
+     FROM facturas f WHERE f.id = ?`,
+    facturaId
+  );
+  if (!f || f.anulada || montoCts > f.saldo) return false;
   await db.runAsync('INSERT INTO pagos (factura_id, monto_cts) VALUES (?, ?)', facturaId, montoCts);
   await sincronizarPagada(db, facturaId);
+  return true;
 }
 
 export async function eliminarPago(db: SQLiteDatabase, facturaId: number, pagoId: number) {
@@ -95,15 +133,18 @@ export async function eliminarPago(db: SQLiteDatabase, facturaId: number, pagoId
   await sincronizarPagada(db, facturaId);
 }
 
+// Solo facturas que se pueden ver en la app: no anuladas y con su proyecto y cliente todavía existentes.
+const VISIBLES = `FROM facturas f JOIN proyectos p ON p.id = f.proyecto_id JOIN clientes c ON c.id = p.cliente_id WHERE f.anulada = 0`;
+
 export async function resumenFacturas(db: SQLiteDatabase) {
   const r = await db.getFirstAsync<{ total: number; cobrado: number }>(
-    `SELECT COALESCE((SELECT SUM(total_cts) FROM facturas), 0) AS total,
-            COALESCE((SELECT SUM(monto_cts) FROM pagos), 0) AS cobrado`
+    `SELECT COALESCE(SUM(f.total_cts), 0) AS total,
+            COALESCE(SUM((SELECT SUM(monto_cts) FROM pagos WHERE factura_id = f.id)), 0) AS cobrado ${VISIBLES}`
   );
   // vencido = saldo de las facturas con vence anterior a hoy
   const v = await db.getFirstAsync<{ vencido: number }>(
     `SELECT COALESCE(SUM(f.total_cts - COALESCE((SELECT SUM(monto_cts) FROM pagos WHERE factura_id = f.id), 0)), 0) AS vencido
-     FROM facturas f WHERE f.pagada = 0 AND f.vence < date('now', 'localtime')`
+     ${VISIBLES} AND f.pagada = 0 AND f.vence < date('now', 'localtime')`
   );
   return {
     por_cobrar: Math.max(0, (r?.total ?? 0) - (r?.cobrado ?? 0)),

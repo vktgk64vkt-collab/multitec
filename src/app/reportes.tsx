@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { reporte, type Reporte } from '@/db/reportes';
-import { formatear } from '@/dinero';
+import { formatearFecha, moneda } from '@/dinero';
 import { color } from '@/tema';
 import { Etiqueta, Tarjeta } from '@/ui';
 
@@ -29,8 +29,8 @@ export default function Reportes() {
         {r?.porMes.map((m) => (
           <View key={m.mes} style={{ gap: 4 }}>
             <View style={estilos.fila}>
-              <Text style={estilos.texto}>{m.mes}</Text>
-              <Text style={estilos.monto}>{formatear(m.total_cts)}</Text>
+              <Text style={estilos.texto}>{formatearFecha(`${m.mes}-01`).replace(/^1 /, '')}</Text>
+              <Text style={estilos.monto}>{moneda(m.total_cts)}</Text>
             </View>
             <View style={estilos.pista}>
               <View style={[estilos.barra, { width: `${(m.total_cts / maxMes) * 100}%` }]} />
@@ -45,7 +45,7 @@ export default function Reportes() {
         {r?.porCliente.map((c) => (
           <View key={c.cliente} style={estilos.fila}>
             <Text style={[estilos.texto, { flex: 1 }]}>{c.cliente}</Text>
-            <Text style={estilos.monto}>{formatear(c.total_cts)}</Text>
+            <Text style={estilos.monto}>{moneda(c.total_cts)}</Text>
           </View>
         ))}
       </Tarjeta>

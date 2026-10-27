@@ -14,10 +14,11 @@ export interface Linea {
   costo_cts: number;
   item_id: number | null;
   partida_id: number | null;
+  detalle: string | null; // descripción breve copiada del inventario
 }
 
 export type DatosLinea = Pick<Linea, 'descripcion' | 'cantidad' | 'precio_cts'> &
-  Partial<Pick<Linea, 'tipo' | 'costo_cts' | 'item_id' | 'partida_id'>>;
+  Partial<Pick<Linea, 'tipo' | 'costo_cts' | 'item_id' | 'partida_id' | 'detalle'>>;
 
 export function listarLineas(db: SQLiteDatabase, proyectoId: number) {
   return db.getAllAsync<Linea>('SELECT * FROM cotizacion_items WHERE proyecto_id = ? ORDER BY id', proyectoId);
@@ -46,9 +47,9 @@ export function importarDelLevantamiento(db: SQLiteDatabase, proyectoId: number)
 
 export function crearLinea(db: SQLiteDatabase, proyectoId: number, d: DatosLinea) {
   return db.runAsync(
-    `INSERT INTO cotizacion_items (proyecto_id, descripcion, cantidad, precio_cts, tipo, costo_cts, item_id, partida_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    proyectoId, d.descripcion, d.cantidad, d.precio_cts, d.tipo ?? 'equipo', d.costo_cts ?? 0, d.item_id ?? null, d.partida_id ?? null
+    `INSERT INTO cotizacion_items (proyecto_id, descripcion, cantidad, precio_cts, tipo, costo_cts, item_id, partida_id, detalle)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    proyectoId, d.descripcion, d.cantidad, d.precio_cts, d.tipo ?? 'equipo', d.costo_cts ?? 0, d.item_id ?? null, d.partida_id ?? null, d.detalle ?? null
   );
 }
 
@@ -87,9 +88,10 @@ export async function aplicarPrecios(db: SQLiteDatabase, proyectoId: number, niv
   const inventario = new Map((await listarCatalogo(db)).map((p) => [p.id, p]));
   await db.withTransactionAsync(async () => {
     await db.runAsync('UPDATE proyectos SET nivel_precio = ?, precios_con_itbis = ? WHERE id = ?', nivel, conItbis ? 1 : 0, proyectoId);
+    const { impuesto_pct } = await obtenerOpciones(db, proyectoId);
     for (const l of await listarLineas(db, proyectoId)) {
       const p = l.item_id === null ? undefined : inventario.get(l.item_id);
-      if (p) await db.runAsync('UPDATE cotizacion_items SET precio_cts = ? WHERE id = ?', precioParaProyecto(p, nivel, conItbis), l.id);
+      if (p) await db.runAsync('UPDATE cotizacion_items SET precio_cts = ? WHERE id = ?', precioParaProyecto(p, nivel, conItbis, impuesto_pct), l.id);
     }
   });
 }

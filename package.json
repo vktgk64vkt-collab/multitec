@@ -7,6 +7,7 @@
     "expo-constants": "~58.0.13",
     "expo-document-picker": "~58.0.4",
     "expo-file-system": "~58.0.11",
+    "expo-haptics": "~58.0.7",
     "expo-image-picker": "~58.0.10",
     "expo-linking": "~58.0.14",
     "expo-print": "~58.0.7",
@@ -32,7 +33,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "pruebas": "node --no-warnings --experimental-strip-types src/dinero.check.mjs && node --no-warnings --experimental-strip-types src/nomenclatura.check.mjs && node --no-warnings --experimental-strip-types src/contacto.check.mjs && node --no-warnings --experimental-strip-types src/db/migraciones.check.mjs && node --no-warnings --experimental-strip-types src/db/flujo.check.mjs && node --no-warnings --experimental-strip-types src/db/codigos.check.mjs && node --no-warnings --experimental-strip-types src/db/facturas.check.mjs",
+    "check": "tsc --noEmit && expo lint && npm run pruebas"
   },
   "private": true
 }

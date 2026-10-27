@@ -7,12 +7,13 @@ import { color } from '@/tema';
 export default function RootLayout() {
   return (
     <SQLiteProvider databaseName="multitec.db" onInit={migrarBaseDeDatos}>
-      <Stack screenOptions={{ contentStyle: { backgroundColor: color.fondo }, headerTintColor: color.primario }}>
+      <Stack screenOptions={{ contentStyle: { backgroundColor: color.fondo }, headerTintColor: color.primario, headerBackButtonDisplayMode: 'minimal' }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="proyecto/nuevo" options={{ title: 'Nuevo proyecto', presentation: 'modal' }} />
         <Stack.Screen name="proyecto/[id]" options={{ title: 'Proyecto' }} />
         <Stack.Screen name="levantamiento" />
         <Stack.Screen name="cotizacion" />
+        <Stack.Screen name="propuesta" />
         <Stack.Screen name="bitacora" />
         <Stack.Screen name="factura" />
         <Stack.Screen name="clientes/[id]" options={{ title: 'Cliente' }} />

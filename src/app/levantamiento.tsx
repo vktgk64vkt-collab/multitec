@@ -4,11 +4,12 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { intentar } from '@/accion';
 import { Alert } from '@/alert';
 import { listarCatalogo, type Producto } from '@/db/catalogo';
 import { listarLineas, obtenerOpciones } from '@/db/cotizacion';
 import { crearPartida, eliminarPartida, listarPartidas, type Partida } from '@/db/levantamiento';
-import { formatear, precioParaProyecto, totales } from '@/dinero';
+import { formatear, moneda, precioParaProyecto, totales } from '@/dinero';
 import { guardarFoto, uriFoto } from '@/fotos';
 import { color } from '@/tema';
 import { Boton, Campo, Etiqueta, Tarjeta } from '@/ui';
@@ -21,7 +22,7 @@ export default function Levantamiento() {
   const [partidas, setPartidas] = useState<Partida[]>([]);
   const [inventario, setInventario] = useState<Producto[]>([]);
   const [total, setTotal] = useState(0);
-  const [opciones, setOpciones] = useState({ nivel: 1, con_itbis: false });
+  const [opciones, setOpciones] = useState({ nivel: 1, con_itbis: false, impuesto_pct: 18 });
   const [busqueda, setBusqueda] = useState('');
   const [area, setArea] = useState('');
   const [equipo, setEquipo] = useState('');
@@ -46,7 +47,13 @@ export default function Levantamiento() {
   const cantidadValida = Number.isInteger(n) && n >= 1;
   const texto = busqueda.trim().toLowerCase();
   const sugerencias = inventario
-    .filter((p) => !texto || p.nombre.toLowerCase().includes(texto) || (p.categoria ?? '').toLowerCase().includes(texto))
+    .filter(
+      (p) =>
+        !texto ||
+        p.nombre.toLowerCase().includes(texto) ||
+        (p.categoria ?? '').toLowerCase().includes(texto) ||
+        (p.codigo ?? '').toLowerCase().includes(texto)
+    )
     .slice(0, MAX_SUGERENCIAS);
 
   async function tomarFoto() {
@@ -60,9 +67,26 @@ export default function Levantamiento() {
     if (!area.trim() || !cantidadValida) {
       return Alert.alert('Faltan datos', 'Escribe el área y una cantidad entera mayor a 0 antes de elegir un equipo.');
     }
-    await crearPartida(db, proyectoId, { area: area.trim(), equipo: p.nombre, cantidad: n, notas: null, foto_uri: null }, p, precioParaProyecto(p, opciones.nivel, opciones.con_itbis));
-    setCantidad('1');
-    cargar();
+    const insertar = async () => {
+      await crearPartida(
+        db,
+        proyectoId,
+        { area: area.trim(), equipo: p.nombre, cantidad: n, notas: null, foto_uri: null },
+        p,
+        precioParaProyecto(p, opciones.nivel, opciones.con_itbis, opciones.impuesto_pct)
+      );
+      setCantidad('1');
+      cargar();
+    };
+    // aviso (no bloqueo) si se pide más de lo que hay en bodega, contando lo que ya se eligió en este levantamiento
+    const yaElegido = partidas.filter((x) => x.item_id === p.id).reduce((s, x) => s + x.cantidad, 0);
+    if (p.stock !== null && yaElegido + n > p.stock) {
+      return Alert.alert('Stock insuficiente', `Hay ${p.stock} de ${p.nombre} en bodega y ya elegiste ${yaElegido}. ¿Agregar ${n} de todos modos?`, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Agregar', onPress: () => intentar(insertar) },
+      ]);
+    }
+    return insertar();
   }
 
   async function agregar() {
@@ -104,7 +128,7 @@ export default function Levantamiento() {
       <Link href={{ pathname: '/cotizacion', params: { proyecto: proyectoId } }} asChild>
         <Pressable accessibilityRole="button" style={estilos.resumen}>
           <Text style={estilos.resumenEtiqueta}>Cotización en curso</Text>
-          <Text style={estilos.resumenMonto}>{formatear(total)}</Text>
+          <Text style={estilos.resumenMonto}>{moneda(total)}</Text>
         </Pressable>
       </Link>
 
@@ -125,15 +149,16 @@ export default function Levantamiento() {
           </Link>
         ) : null}
         {sugerencias.map((p) => (
-          <Pressable key={p.id} style={estilos.sugerencia} onPress={() => agregarDelInventario(p)}>
+          <Pressable key={p.id} style={estilos.sugerencia} onPress={() => intentar(() => agregarDelInventario(p))}>
             <View style={{ flex: 1 }}>
               <Text style={estilos.nombre}>{p.nombre}</Text>
               <Text style={estilos.detalle}>
+                {p.codigo ? `${p.codigo} · ` : ''}
                 {p.categoria ?? 'Sin categoría'}
                 {p.stock !== null ? ` · stock ${p.stock}` : ''}
               </Text>
             </View>
-            <Text style={estilos.precio}>{formatear(precioParaProyecto(p, opciones.nivel, opciones.con_itbis))}</Text>
+            <Text style={estilos.precio}>{formatear(precioParaProyecto(p, opciones.nivel, opciones.con_itbis, opciones.impuesto_pct))}</Text>
           </Pressable>
         ))}
         {inventario.length > 0 && sugerencias.length === 0 ? <Text style={estilos.detalle}>Sin resultados.</Text> : null}

@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { formatear } from '@/dinero';
+import { moneda } from '@/dinero';
 import { resumenFacturas } from '@/db/factura';
 import { listarProyectos, type Proyecto } from '@/db/proyectos';
 import { color, tarjeta } from '@/tema';
@@ -34,27 +34,27 @@ export default function Inicio() {
           <View style={estilos.fila}>
             <View style={[tarjeta, estilos.resumen]}>
               <Text style={estilos.etiqueta}>Por cobrar</Text>
-              <Text style={[estilos.monto, { color: color.alerta }]}>{formatear(resumen.por_cobrar)}</Text>
+              <Text style={[estilos.monto, { color: color.alerta }]}>{moneda(resumen.por_cobrar)}</Text>
             </View>
             <View style={[tarjeta, estilos.resumen]}>
               <Text style={estilos.etiqueta}>Cobrado</Text>
-              <Text style={[estilos.monto, { color: color.ok }]}>{formatear(resumen.cobrado)}</Text>
+              <Text style={[estilos.monto, { color: color.ok }]}>{moneda(resumen.cobrado)}</Text>
             </View>
           </View>
           {resumen.vencido > 0 ? (
             <View style={[tarjeta, estilos.resumen, { borderLeftWidth: 4, borderLeftColor: '#c0262d' }]}>
               <Text style={estilos.etiqueta}>Vencido</Text>
-              <Text style={[estilos.monto, { color: '#c0262d' }]}>{formatear(resumen.vencido)}</Text>
+              <Text style={[estilos.monto, { color: '#c0262d' }]}>{moneda(resumen.vencido)}</Text>
             </View>
           ) : null}
           <View style={estilos.fila}>
             <Link href="/proyecto/nuevo" asChild>
-              <Pressable style={estilos.accion}>
+              <Pressable accessibilityRole="button" style={estilos.accion}>
                 <Text style={estilos.textoAccion}>+ Proyecto</Text>
               </Pressable>
             </Link>
             <Link href="/clientes/formulario" asChild>
-              <Pressable style={[estilos.accion, estilos.secundaria]}>
+              <Pressable accessibilityRole="button" style={[estilos.accion, estilos.secundaria]}>
                 <Text style={[estilos.textoAccion, { color: color.primario }]}>+ Cliente</Text>
               </Pressable>
             </Link>
@@ -65,7 +65,7 @@ export default function Inicio() {
       ListEmptyComponent={<Text style={estilos.vacio}>Aún no hay proyectos. Toca &quot;+ Proyecto&quot; para crear el primero.</Text>}
       renderItem={({ item }) => (
         <Link href={{ pathname: '/proyecto/[id]', params: { id: item.id } }} asChild>
-          <Pressable style={[tarjeta, estilos.proyecto]}>
+          <Pressable accessibilityRole="button" style={[tarjeta, estilos.proyecto]}>
             <View style={{ flex: 1 }}>
               <Text style={estilos.nombre}>{item.nombre}</Text>
               <Text style={estilos.detalle}>

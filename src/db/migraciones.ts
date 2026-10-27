@@ -1,15 +1,23 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const VERSION_ACTUAL = 12;
+import { CODIGOS_SQL } from '../nomenclatura';
+
+export const VERSION_ACTUAL = 14;
 
 export async function migrarBaseDeDatos(db: SQLiteDatabase) {
+  // por conexión y fuera de la transacción: sin foreign_keys el ON DELETE CASCADE del esquema no hace nada
+  await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
   const fila = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const version = fila?.user_version ?? 0;
   if (version >= VERSION_ACTUAL) return;
+  // todo o nada: si la app se cierra a medias, no queda a medio migrar (repetir un ALTER fallaría para siempre)
+  await db.withTransactionAsync(() => aplicar(db, version));
+}
+
+async function aplicar(db: SQLiteDatabase, version: number) {
 
   if (version < 1) {
     await db.execAsync(`
-      PRAGMA journal_mode = 'wal';
       CREATE TABLE IF NOT EXISTS clientes (
         id INTEGER PRIMARY KEY NOT NULL,
         nombre TEXT NOT NULL,
@@ -181,6 +189,29 @@ export async function migrarBaseDeDatos(db: SQLiteDatabase) {
       ALTER TABLE catalogo ADD COLUMN f_marca TEXT;
       ALTER TABLE catalogo ADD COLUMN f_modelo TEXT;
     `);
+  }
+
+  if (version < 13) {
+    // código único por artículo, descripción breve (se copia a cotización y factura) y texto de la propuesta
+    await db.execAsync(`
+      ALTER TABLE catalogo ADD COLUMN codigo TEXT;
+      ALTER TABLE catalogo ADD COLUMN descripcion TEXT;
+      ALTER TABLE cotizacion_items ADD COLUMN detalle TEXT;
+      ALTER TABLE factura_items ADD COLUMN detalle TEXT;
+      ALTER TABLE proyectos ADD COLUMN propuesta_intro TEXT;
+    `);
+    await db.execAsync(CODIGOS_SQL);
+    await db.execAsync('CREATE UNIQUE INDEX IF NOT EXISTS idx_catalogo_codigo ON catalogo (codigo)');
+  }
+
+  if (version < 14) {
+    // facturas anuladas (el NCF queda usado) y NCF único: solo se crea el índice si no hay repetidos ya guardados
+    await db.execAsync(`
+      ALTER TABLE facturas ADD COLUMN anulada INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE factura_items ADD COLUMN item_id INTEGER;
+    `);
+    const repetido = await db.getFirstAsync('SELECT 1 FROM facturas GROUP BY ncf HAVING COUNT(*) > 1');
+    if (!repetido) await db.execAsync('CREATE UNIQUE INDEX IF NOT EXISTS idx_facturas_ncf ON facturas (ncf)');
   }
 
   await db.execAsync(`PRAGMA user_version = ${VERSION_ACTUAL}`);

@@ -3,29 +3,62 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { cambiarEstado, duplicarProyecto, ESTADOS, obtenerProyecto, type Proyecto } from '@/db/proyectos';
+import { Alert } from '@/alert';
+import { resumenProyecto, type ResumenProyecto } from '@/db/resumen';
+import { cambiarEstado, duplicarProyecto, eliminarProyecto, ESTADOS, obtenerProyecto, type Proyecto } from '@/db/proyectos';
+import { formatearFecha, moneda } from '@/dinero';
 import { color, tarjeta } from '@/tema';
-import { Boton, Etiqueta } from '@/ui';
+import { Boton, Chip, Etiqueta } from '@/ui';
 
-const PASOS = [
-  { ruta: '/levantamiento', titulo: 'Levantamiento', detalle: 'Equipos y fotos del sitio' },
-  { ruta: '/cotizacion', titulo: 'Cotización', detalle: 'Líneas, descuentos e impuesto' },
-  { ruta: '/factura', titulo: 'Factura', detalle: 'NCF, pagos y vencimiento' },
-  { ruta: '/bitacora', titulo: 'Bitácora', detalle: 'Visitas y avances' },
-] as const;
+const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
 
 export default function DetalleProyecto() {
   const db = useSQLiteContext();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [proyecto, setProyecto] = useState<Proyecto | null>(null);
+  const [resumen, setResumen] = useState<ResumenProyecto | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       obtenerProyecto(db, Number(id)).then(setProyecto);
+      resumenProyecto(db, Number(id)).then(setResumen);
     }, [db, id])
   );
 
   if (!proyecto) return null;
+
+  // línea de estado de cada paso: lo que ya hay hecho, sin entrar a la pantalla
+  const pasos = [
+    {
+      ruta: '/levantamiento',
+      titulo: 'Levantamiento',
+      detalle: resumen && resumen.partidas > 0 ? plural(resumen.partidas, 'partida', 'partidas') : 'Equipos y fotos del sitio',
+    },
+    {
+      ruta: '/cotizacion',
+      titulo: 'Cotización',
+      detalle: resumen && resumen.lineas > 0 ? `${plural(resumen.lineas, 'línea', 'líneas')} · ${moneda(resumen.total_cts)}` : 'Líneas, descuentos e impuesto',
+    },
+    {
+      ruta: '/propuesta',
+      titulo: 'Propuesta',
+      detalle: resumen && resumen.lineas > 0 ? `Monto total ${moneda(resumen.total_cts)}` : 'Todo el alcance con un solo monto total',
+    },
+    {
+      ruta: '/factura',
+      titulo: 'Factura',
+      detalle: !resumen?.factura
+        ? 'NCF, pagos y vencimiento'
+        : resumen.factura.anulada
+          ? `${resumen.factura.ncf} · anulada`
+          : `${resumen.factura.ncf} · ${resumen.factura.saldo_cts > 0 ? `saldo ${moneda(resumen.factura.saldo_cts)}` : 'pagada'}`,
+    },
+    {
+      ruta: '/bitacora',
+      titulo: 'Bitácora',
+      detalle: resumen && resumen.entradas > 0 ? plural(resumen.entradas, 'entrada', 'entradas') : 'Visitas y avances',
+    },
+  ] as const;
 
   async function elegirEstado(estado: string) {
     await cambiarEstado(db, Number(id), estado);
@@ -36,6 +69,23 @@ export default function DetalleProyecto() {
     router.replace({ pathname: '/proyecto/[id]', params: { id: await duplicarProyecto(db, Number(id)) } });
   }
 
+  function confirmarEliminar() {
+    if (resumen?.factura) {
+      return Alert.alert('Tiene factura', 'Un proyecto con factura no se borra. Anula la factura si fue un error; el NCF queda registrado.');
+    }
+    Alert.alert('Eliminar proyecto', `¿Eliminar ${proyecto?.nombre}? Se borran su levantamiento, cotización y bitácora. No se puede deshacer.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: async () => {
+          await eliminarProyecto(db, Number(id));
+          router.back();
+        },
+      },
+    ]);
+  }
+
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor}>
       <Text style={estilos.nombre}>{proyecto.nombre}</Text>
@@ -44,9 +94,9 @@ export default function DetalleProyecto() {
       </Text>
 
       <View style={estilos.pasos}>
-        {PASOS.map((p) => (
+        {pasos.map((p) => (
           <Link key={p.ruta} href={{ pathname: p.ruta, params: { proyecto: proyecto.id } }} asChild>
-            <Pressable accessibilityRole="button" style={[tarjeta, estilos.paso]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`${p.titulo}. ${p.detalle}`} style={[tarjeta, estilos.paso]}>
               <View style={{ flex: 1 }}>
                 <Text style={estilos.titulo}>{p.titulo}</Text>
                 <Text style={estilos.detalle}>{p.detalle}</Text>
@@ -60,14 +110,13 @@ export default function DetalleProyecto() {
       <Etiqueta>Estado</Etiqueta>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={estilos.chips}>
         {ESTADOS.map((e) => (
-          <Pressable key={e} style={[estilos.chip, e === proyecto.estado && estilos.activa]} onPress={() => elegirEstado(e)}>
-            <Text style={[estilos.textoChip, e === proyecto.estado && estilos.textoActivo]}>{e}</Text>
-          </Pressable>
+          <Chip key={e} borde texto={e} activo={e === proyecto.estado} onPress={() => elegirEstado(e)} />
         ))}
       </ScrollView>
 
       <Boton tipo="secundario" texto="Duplicar proyecto" onPress={duplicar} />
-      <Text style={estilos.creado}>Creado: {proyecto.creado_en}</Text>
+      <Boton tipo="peligro" texto="Eliminar proyecto" onPress={confirmarEliminar} />
+      <Text style={estilos.creado}>Creado: {formatearFecha(proyecto.creado_en)}</Text>
     </ScrollView>
   );
 }
@@ -81,9 +130,5 @@ const estilos = StyleSheet.create({
   titulo: { fontSize: 17, fontWeight: '600', color: color.texto },
   flecha: { fontSize: 24, color: color.suave },
   chips: { gap: 8 },
-  chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, backgroundColor: color.tarjeta, borderWidth: 1, borderColor: color.borde },
-  activa: { backgroundColor: color.primario, borderColor: color.primario },
-  textoChip: { color: color.texto, textTransform: 'capitalize' },
-  textoActivo: { color: '#fff', fontWeight: '600' },
   creado: { fontSize: 12, color: color.suave, textAlign: 'center' },
 });

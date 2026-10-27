@@ -46,7 +46,7 @@ export default function ListaClientes() {
         }
         renderItem={({ item }) => (
           <Link href={{ pathname: '/clientes/[id]', params: { id: item.id } }} asChild>
-            <Pressable style={[tarjeta, estilos.fila]}>
+            <Pressable accessibilityRole="button" style={[tarjeta, estilos.fila]}>
               <Text style={estilos.nombre}>{item.nombre}</Text>
               {item.empresa ? <Text style={estilos.detalle}>{item.empresa}</Text> : null}
               {item.telefono ? <Text style={estilos.detalle}>{item.telefono}</Text> : null}

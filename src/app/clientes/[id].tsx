@@ -3,7 +3,10 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { intentar } from '@/accion';
 import { Alert } from '@/alert';
+import { urlWhatsApp } from '@/contacto';
+import { formatearFecha } from '@/dinero';
 import { eliminarCliente, obtenerCliente, type Cliente } from '@/db/clientes';
 import { listarProyectos, type Proyecto } from '@/db/proyectos';
 import { color } from '@/tema';
@@ -31,8 +34,8 @@ export default function DetalleCliente() {
         text: 'Eliminar',
         style: 'destructive',
         onPress: async () => {
-          await eliminarCliente(db, Number(id));
-          router.back();
+          if (await eliminarCliente(db, Number(id))) router.back();
+          else Alert.alert('Tiene proyectos', 'Este cliente tiene proyectos. Elimina o reasigna sus proyectos antes de borrarlo: así no se pierden cotizaciones ni facturas.');
         },
       },
     ]);
@@ -51,15 +54,17 @@ export default function DetalleCliente() {
     { etiqueta: 'Notas', valor: cliente.notas },
   ];
 
-  const whatsapp = cliente.telefono?.replace(/\D/g, '');
+  const abrir = (url: string) =>
+    Linking.openURL(url).catch(() => Alert.alert('No se pudo abrir', 'Revisa que la aplicación esté instalada en este iPhone.'));
+  const whatsapp = urlWhatsApp(cliente.telefono);
 
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor}>
       <Text style={estilos.nombre}>{cliente.nombre}</Text>
 
       <View style={estilos.acciones}>
-        {cliente.telefono ? <Boton texto="Llamar" onPress={() => Linking.openURL(`tel:${cliente.telefono}`)} /> : null}
-        {whatsapp ? <Boton tipo="secundario" texto="WhatsApp" onPress={() => Linking.openURL(`https://wa.me/${whatsapp}`)} /> : null}
+        {cliente.telefono ? <Boton texto="Llamar" onPress={() => abrir(`tel:${cliente.telefono}`)} /> : null}
+        {whatsapp ? <Boton tipo="secundario" texto="WhatsApp" onPress={() => abrir(whatsapp)} /> : null}
       </View>
 
       <Tarjeta>
@@ -70,12 +75,12 @@ export default function DetalleCliente() {
               <Text style={estilos.etiqueta}>{d.etiqueta}</Text>
               <Text
                 style={[estilos.valor, d.enlace && estilos.enlace]}
-                onPress={d.enlace ? () => Linking.openURL(d.enlace as string) : undefined}>
+                onPress={d.enlace ? () => intentar(() => abrir(d.enlace as string)) : undefined}>
                 {d.valor}
               </Text>
             </View>
           ))}
-        <Text style={estilos.creado}>Registrado: {cliente.creado_en}</Text>
+        <Text style={estilos.creado}>Registrado: {formatearFecha(cliente.creado_en)}</Text>
       </Tarjeta>
 
       <Etiqueta>Proyectos ({proyectos.length})</Etiqueta>

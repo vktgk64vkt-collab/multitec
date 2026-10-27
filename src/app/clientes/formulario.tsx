@@ -1,8 +1,9 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { intentar } from '@/accion';
 import { Alert } from '@/alert';
 import { color } from '@/tema';
 import { Campo, Tarjeta } from '@/ui';
@@ -72,9 +73,9 @@ export default function FormularioCliente() {
         options={{
           title: idCliente === null ? 'Nuevo cliente' : 'Editar cliente',
           headerRight: () => (
-            <Text style={estilos.guardar} onPress={guardar}>
-              Guardar
-            </Text>
+            <Pressable accessibilityRole="button" hitSlop={12} style={estilos.botonGuardar} onPress={() => intentar(guardar)}>
+              <Text style={estilos.guardar}>Guardar</Text>
+            </Pressable>
           ),
         }}
       />
@@ -101,5 +102,6 @@ const estilos = StyleSheet.create({
   contenedor: { padding: 16 },
   grupo: { gap: 4 },
   etiqueta: { fontSize: 13, fontWeight: '600', color: color.suave },
+  botonGuardar: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' },
   guardar: { color: color.primario, fontSize: 17, fontWeight: '600' },
 });

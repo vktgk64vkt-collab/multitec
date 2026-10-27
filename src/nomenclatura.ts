@@ -17,10 +17,12 @@ export interface Familia {
   especificaciones: Record<string, string[]>;
   marcas: string[];
   servicio?: boolean; // los artículos de esta familia son servicios (sin stock)
+  codigo: string; // prefijo del código único: CCTV-0001
 }
 
 export const FAMILIAS: Record<string, Familia> = {
   CCTV: {
+    codigo: 'CCTV',
     etiquetas: { tipo: 'Tipo', tecnologia: 'Tecnología', forma: 'Forma', especificacion: 'Resolución / capacidad', marca: 'Marca', modelo: 'Modelo' },
     tipos: ['Cámara', 'NVR', 'DVR', 'XVR', 'Disco duro', 'Fuente de poder', 'Monitor', 'Video balun', 'Caja de conexiones', 'Soporte', 'Lente', 'Kit'],
     tecnologias: ['IP', 'HD-TVI', 'AHD', 'HDCVI', 'Analógica', 'WiFi'],
@@ -38,6 +40,7 @@ export const FAMILIAS: Record<string, Familia> = {
     marcas: ['Hikvision', 'Dahua', 'Uniview', 'Axis', 'Hanwha', 'Ezviz', 'Imou', 'Provision-ISR', 'Western Digital', 'Seagate', 'Genérica'],
   },
   Alarma: {
+    codigo: 'ALM',
     etiquetas: { tipo: 'Tipo', tecnologia: 'Tecnología', forma: 'Montaje', especificacion: 'Zonas / capacidad', marca: 'Marca', modelo: 'Modelo' },
     tipos: ['Panel', 'Teclado', 'Sensor de movimiento', 'Contacto magnético', 'Detector de humo', 'Sirena', 'Botón de pánico', 'Control remoto', 'Módulo de expansión', 'Comunicador', 'Batería', 'Fuente de poder', 'Kit'],
     tecnologias: ['Cableada', 'Inalámbrica', 'Híbrida', 'IP / WiFi', 'Celular 4G'],
@@ -53,6 +56,7 @@ export const FAMILIAS: Record<string, Familia> = {
     marcas: ['DSC', 'Honeywell', 'Paradox', 'Ajax', 'Bosch', 'Hikvision', 'Texecom', 'Risco', 'Pima', 'Genérica'],
   },
   'Control de acceso': {
+    codigo: 'ACC',
     etiquetas: { tipo: 'Tipo', tecnologia: 'Tecnología', forma: 'Montaje', especificacion: 'Capacidad / fuerza', marca: 'Marca', modelo: 'Modelo' },
     tipos: ['Lector', 'Controlador', 'Cerradura magnética', 'Cerradura eléctrica', 'Cerrojo eléctrico', 'Botón de salida', 'Teclado', 'Terminal biométrica', 'Torniquete', 'Barrera vehicular', 'Intercomunicador', 'Tarjeta', 'Llavero (tag)', 'Fuente de poder'],
     tecnologias: ['RFID 125 kHz', 'Mifare 13.56 MHz', 'Huella', 'Facial', 'PIN', 'Bluetooth', 'Mixta'],
@@ -68,6 +72,7 @@ export const FAMILIAS: Record<string, Familia> = {
     marcas: ['Hikvision', 'ZKTeco', 'Suprema', 'HID', 'Dahua', 'Paxton', 'Genérica'],
   },
   Redes: {
+    codigo: 'RED',
     etiquetas: { tipo: 'Tipo', tecnologia: 'Tecnología', forma: 'Forma / montaje', especificacion: 'Puertos / capacidad', marca: 'Marca', modelo: 'Modelo' },
     tipos: ['Switch', 'Router', 'Access point', 'Firewall', 'Patch panel', 'Rack', 'UPS', 'Inyector PoE', 'Transceptor SFP', 'Radioenlace', 'Antena', 'Servidor', 'Organizador'],
     tecnologias: ['PoE', 'PoE+', 'Gigabit', '10 Gigabit', 'WiFi 5', 'WiFi 6', 'WiFi 6E', 'WiFi 7', 'Fibra óptica', '4G/5G'],
@@ -82,6 +87,7 @@ export const FAMILIAS: Record<string, Familia> = {
     marcas: ['Ubiquiti', 'TP-Link', 'MikroTik', 'Cisco', 'Ruijie', 'Tenda', 'Mercusys', 'D-Link', 'APC', 'Genérica'],
   },
   Domótica: {
+    codigo: 'DOM',
     etiquetas: { tipo: 'Tipo', tecnologia: 'Tecnología', forma: 'Forma / montaje', especificacion: 'Canales / variante', marca: 'Marca', modelo: 'Modelo' },
     tipos: ['Hub / Gateway', 'Interruptor', 'Enchufe', 'Sensor', 'Cerradura inteligente', 'Termostato', 'Motor de cortina', 'Timbre con video', 'Control IR', 'Iluminación', 'Bocina inteligente', 'Cámara WiFi', 'Módulo relé', 'Pantalla'],
     tecnologias: ['WiFi', 'Zigbee', 'Z-Wave', 'Bluetooth', 'Matter', 'KNX', 'RF 433 MHz'],
@@ -96,6 +102,7 @@ export const FAMILIAS: Record<string, Familia> = {
     marcas: ['Sonoff', 'Shelly', 'Tuya', 'Aqara', 'Philips Hue', 'Lutron', 'Somfy', 'Genérica'],
   },
   Cableado: {
+    codigo: 'CAB',
     etiquetas: { tipo: 'Tipo', tecnologia: 'Categoría / tipo de cable', forma: 'Uso', especificacion: 'Medida / presentación', marca: 'Marca', modelo: 'Modelo' },
     tipos: ['Cable UTP', 'Cable coaxial', 'Cable de fibra', 'Cable de alarma', 'Cable eléctrico', 'Cable HDMI', 'Patch cord', 'Canaleta', 'Tubería', 'Conector', 'Jack', 'Face plate', 'Caja de paso', 'Amarres'],
     tecnologias: ['Cat5e', 'Cat6', 'Cat6A', 'RG59', 'RG6', 'Monomodo', 'Multimodo', '2 hilos', '4 hilos', '6 hilos', 'THHN'],
@@ -109,6 +116,7 @@ export const FAMILIAS: Record<string, Familia> = {
     marcas: ['Panduit', 'Belden', 'Nexxt', 'Commscope', 'Siemon', 'Genérica'],
   },
   Energía: {
+    codigo: 'ENE',
     etiquetas: { tipo: 'Tipo', tecnologia: 'Tecnología', forma: 'Forma / montaje', especificacion: 'Capacidad', marca: 'Marca', modelo: 'Modelo' },
     tipos: ['UPS', 'Batería', 'Panel solar', 'Inversor', 'Regulador de voltaje', 'Planta eléctrica', 'Cargador', 'Fuente de poder'],
     tecnologias: ['AGM', 'Gel', 'Litio', 'Plomo ácido', 'Online', 'Offline', 'Línea interactiva'],
@@ -121,6 +129,7 @@ export const FAMILIAS: Record<string, Familia> = {
     marcas: ['APC', 'CDP', 'Forza', 'Tripp Lite', 'Victron', 'Genérica'],
   },
   Servicios: {
+    codigo: 'SRV',
     etiquetas: { tipo: 'Servicio', tecnologia: 'Sistema', forma: 'Unidad de cobro', especificacion: 'Alcance', marca: 'Marca', modelo: 'Modelo' },
     tipos: ['Instalación', 'Configuración', 'Programación', 'Mantenimiento', 'Visita técnica', 'Diagnóstico', 'Canalización', 'Cableado', 'Capacitación', 'Soporte / garantía', 'Mano de obra'],
     tecnologias: ['CCTV', 'Alarma', 'Control de acceso', 'Redes', 'Domótica', 'Cableado', 'Energía', 'General'],
@@ -149,3 +158,15 @@ export function armarNombre(p: Partes): string | null {
   if (v.some((x) => x === '') || v[0].toUpperCase() === NA) return null;
   return v.filter((x) => x.toUpperCase() !== NA).join(' ');
 }
+
+export const PREFIJO_GENERICO = 'GEN';
+
+export function prefijoCodigo(familia: string | null): string {
+  return (familia && FAMILIAS[familia]?.codigo) || PREFIJO_GENERICO;
+}
+
+// Rellena el código de los artículos que no lo tienen (migración y respaldos viejos): PREFIJO-0001 en orden de id.
+const CASO = (alias: string) =>
+  `CASE ${alias}.categoria ${Object.entries(FAMILIAS).map(([n, f]) => `WHEN '${n}' THEN '${f.codigo}'`).join(' ')} ELSE '${PREFIJO_GENERICO}' END`;
+export const CODIGOS_SQL = `UPDATE catalogo SET codigo = ${CASO('catalogo')} || '-' || printf('%04d',
+  (SELECT COUNT(*) FROM catalogo c WHERE c.id <= catalogo.id AND ${CASO('c')} = ${CASO('catalogo')})) WHERE codigo IS NULL`;

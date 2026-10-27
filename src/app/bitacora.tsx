@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { Alert } from '@/alert';
 import { crearEntrada, eliminarEntrada, listarEntradas, type Entrada } from '@/db/bitacora';
+import { formatearFecha } from '@/dinero';
 import { color } from '@/tema';
 import { Boton, Campo, Tarjeta } from '@/ui';
 
@@ -57,7 +58,7 @@ export default function Bitacora() {
       {entradas.map((e) => (
         <Pressable key={e.id} onLongPress={() => confirmarEliminar(e)}>
           <Tarjeta style={{ gap: 2 }}>
-            <Text style={estilos.fecha}>{e.creado_en}</Text>
+            <Text style={estilos.fecha}>{formatearFecha(e.creado_en, true)}</Text>
             <Text style={estilos.nota}>{e.texto}</Text>
           </Tarjeta>
         </Pressable>
