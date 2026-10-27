@@ -1,0 +1,41 @@
+# Compila un .ipa SIN firma para firmarlo después con Sideloadly / AltStore (Apple ID gratuito).
+name: ios-unsigned
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: npm ci
+      - run: npx expo prebuild --platform ios --no-install
+      - run: pod install
+        working-directory: ios
+      - name: Compilar sin firma
+        run: |
+          xcodebuild \
+            -workspace ios/multitec.xcworkspace \
+            -scheme multitec \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+      - name: Empaquetar .ipa
+        run: |
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/multitec.app Payload/
+          zip -qry multitec.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: multitec-ipa
+          path: multitec.ipa
