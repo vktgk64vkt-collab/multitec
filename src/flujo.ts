@@ -7,13 +7,15 @@ export interface EstadoFlujo {
   lineas: number;
   total_cts: number;
   factura: { ncf: string; saldo_cts: number; anulada: boolean } | null;
+  /** Solo si la ejecución ya empezó. */
+  ejecucion?: { cambios: number; real_cts: number } | null;
 }
 
 export interface Paso {
   titulo: string;
   detalle: string;
   boton: string;
-  destino: 'levantamiento' | 'cotizacion' | 'factura' | 'cerrar';
+  destino: 'levantamiento' | 'cotizacion' | 'ejecucion' | 'factura' | 'cerrar';
 }
 
 /** "RD$ 1,500.00" (mismo formato que dinero.moneda, repetido aquí para no depender de otros módulos). */
@@ -33,6 +35,15 @@ export function siguientePaso(e: EstadoFlujo): Paso | null {
   }
   if (e.factura) {
     return { titulo: 'Todo cobrado', detalle: 'Cierra el proyecto para sacarlo de los que están en curso.', boton: 'Cerrar proyecto', destino: 'cerrar' };
+  }
+  if (e.ejecucion) {
+    const c = e.ejecucion.cambios;
+    return {
+      titulo: `En ejecución: ${rd(e.ejecucion.real_cts)}`,
+      detalle: c === 0 ? 'Sin cambios sobre la cotización. Revisa y factura cuando termines.' : `${c} cambio${c === 1 ? '' : 's'} sobre la cotización. Revísalos antes de facturar.`,
+      boton: 'Abrir ejecución',
+      destino: 'ejecucion',
+    };
   }
   if (e.lineas > 0) {
     return {

@@ -7,7 +7,7 @@ import { EN_COTIZACION_SQL, VERSION_ACTUAL } from '@/db/migraciones';
 import { CODIGOS_SQL } from '@/nomenclatura';
 
 // Hijas primero al borrar, padres primero al insertar.
-const TABLAS = ['clientes', 'proyectos', 'levantamiento', 'cotizacion_items', 'bitacora', 'facturas', 'factura_items', 'pagos', 'catalogo', 'negocio'];
+const TABLAS = ['clientes', 'proyectos', 'levantamiento', 'cotizacion_items', 'bitacora', 'facturas', 'factura_items', 'pagos', 'catalogo', 'negocio', 'ejecucion_items', 'comprobantes'];
 
 /** Exporta la base de datos completa y abre la hoja de compartir. Las fotos NO van incluidas. */
 export async function exportarRespaldo(db: SQLite.SQLiteDatabase) {

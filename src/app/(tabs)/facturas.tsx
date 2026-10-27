@@ -8,9 +8,11 @@ import { FilaDeslizable } from '@/deslizar';
 import { anularFactura, listarFacturas, resumenFacturas, type FilaFactura } from '@/db/factura';
 import { proyectosConResumen, type ProyectoConResumen } from '@/db/resumen';
 import { fechaEn, formatearFecha, moneda } from '@/dinero';
+import { normalizar } from '@/pedido';
 import { FilaProyecto } from '@/proyectoUi';
 import { PantallaTab } from '@/pestanas';
 import { color, tarjeta } from '@/tema';
+import { Campo, PROPS_TECLADO } from '@/ui';
 
 const SIN_RESUMEN = { por_cobrar: 0, cobrado: 0, vencido: 0 };
 
@@ -20,6 +22,7 @@ export default function Facturas() {
   const [resumen, setResumen] = useState(SIN_RESUMEN);
   const [facturas, setFacturas] = useState<FilaFactura[]>([]);
   const [cargado, setCargado] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
   const [porFacturar, setPorFacturar] = useState<ProyectoConResumen[]>([]);
 
   const cargar = useCallback(() => {
@@ -52,10 +55,14 @@ export default function Facturas() {
   }
 
   const hoy = fechaEn(0);
+  const q = normalizar(busqueda);
+  const facturasVisibles = q ? facturas.filter((f) => normalizar(`${f.ncf} ${f.cliente} ${f.proyecto}`).includes(q)) : facturas;
+  const porFacturarVisibles = q ? porFacturar.filter((x) => normalizar(`${x.proyecto.nombre} ${x.proyecto.cliente}`).includes(q)) : porFacturar;
 
   return (
     <PantallaTab titulo="Facturas">
-      <ScrollView contentContainerStyle={estilos.contenido}>
+      <ScrollView {...PROPS_TECLADO} contentContainerStyle={estilos.contenido} keyboardShouldPersistTaps="handled">
+        <Campo placeholder="Buscar por NCF, cliente o proyecto" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
         <View style={estilos.fila}>
           <View style={[tarjeta, estilos.cifra]}>
             <Text style={estilos.etiqueta}>Por cobrar</Text>
@@ -73,18 +80,20 @@ export default function Facturas() {
           </View>
         ) : null}
 
-        {porFacturar.length > 0 ? (
+        {porFacturarVisibles.length > 0 ? (
           <>
             <Text style={estilos.seccion}>Listos para facturar</Text>
-            {porFacturar.map(({ proyecto, resumen: r }) => (
+            {porFacturarVisibles.map(({ proyecto, resumen: r }) => (
               <FilaProyecto key={proyecto.id} proyecto={proyecto} detalle={`Cotización ${moneda(r.total_cts)}`} href={{ pathname: '/factura', params: { proyecto: proyecto.id } }} />
             ))}
           </>
         ) : null}
 
         <Text style={estilos.seccion}>Facturas</Text>
-        {cargado && facturas.length === 0 ? <Text style={estilos.vacio}>Aún no hay facturas. Se crean desde un proyecto, después de cotizar.</Text> : null}
-        {facturas.map((f) => {
+        {cargado && facturasVisibles.length === 0 ? (
+          <Text style={estilos.vacio}>{busqueda ? 'Sin resultados.' : 'Aún no hay facturas. Se crean desde un proyecto, después de cotizar.'}</Text>
+        ) : null}
+        {facturasVisibles.map((f) => {
           const saldo = Math.max(0, f.total_cts - f.pagado_cts);
           const vencida = !f.anulada && saldo > 0 && !!f.vence && f.vence < hoy;
           const estado = f.anulada ? 'Anulada' : saldo === 0 ? 'Pagada ✓' : vencida ? `Vencida · ${moneda(saldo)}` : `Saldo ${moneda(saldo)}`;

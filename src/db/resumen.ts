@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { totales } from '@/dinero';
 import { listarLineas, obtenerOpciones } from './cotizacion';
+import { resumenEjecucion } from './ejecucion';
 import { obtenerFactura } from './factura';
 import { listarProyectos, type FiltroProyectos, type Proyecto } from './proyectos';
 
@@ -11,6 +12,8 @@ export interface ResumenProyecto {
   total_cts: number;
   entradas: number;
   factura: { ncf: string; saldo_cts: number; anulada: boolean } | null;
+  /** null si la ejecución no ha empezado. */
+  ejecucion: { cambios: number; real_cts: number; comprobantes: number } | null;
 }
 
 const contar = (db: SQLiteDatabase, tabla: 'levantamiento' | 'bitacora', id: number) =>
@@ -21,6 +24,7 @@ export async function resumenProyecto(db: SQLiteDatabase, id: number): Promise<R
   const lineas = await listarLineas(db, id);
   const op = await obtenerOpciones(db, id);
   const f = await obtenerFactura(db, id);
+  const ej = await resumenEjecucion(db, id);
   const pagado = f
     ? ((await db.getFirstAsync<{ s: number }>('SELECT COALESCE(SUM(monto_cts), 0) AS s FROM pagos WHERE factura_id = ?', f.id))?.s ?? 0)
     : 0;
@@ -30,6 +34,7 @@ export async function resumenProyecto(db: SQLiteDatabase, id: number): Promise<R
     total_cts: totales(lineas, op.impuesto_pct, op.con_itbis).total,
     entradas: await contar(db, 'bitacora', id),
     factura: f ? { ncf: f.ncf, saldo_cts: Math.max(0, f.total_cts - pagado), anulada: f.anulada === 1 } : null,
+    ejecucion: ej ? { cambios: ej.cambios, real_cts: ej.real_cts, comprobantes: ej.comprobantes } : null,
   };
 }
 

@@ -5,14 +5,17 @@ import { FlatList, Pressable, StyleSheet, Text } from 'react-native';
 
 import { proyectosConResumen, type ProyectoConResumen } from '@/db/resumen';
 import { FilaProyecto } from '@/proyectoUi';
+import { normalizar } from '@/pedido';
 import { PantallaTab } from '@/pestanas';
 import { color } from '@/tema';
+import { Campo, PROPS_TECLADO } from '@/ui';
 
 /** Levantamiento: elige el proyecto donde estás para agregar equipos o dictar un pedido. */
 export default function Levantamientos() {
   const db = useSQLiteContext();
   const [filas, setFilas] = useState<ProyectoConResumen[]>([]);
   const [cargado, setCargado] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -24,14 +27,21 @@ export default function Levantamientos() {
     }, [db])
   );
 
+  const q = normalizar(busqueda);
+  const visibles = q ? filas.filter((f) => normalizar(`${f.proyecto.nombre} ${f.proyecto.cliente} ${f.proyecto.tipo}`).includes(q)) : filas;
+
   return (
     <PantallaTab titulo="Levantamiento" subtitulo="¿En qué proyecto estás ahora?">
-      <FlatList
-        data={filas}
+      <FlatList {...PROPS_TECLADO}
+        data={visibles}
         keyExtractor={(f) => String(f.proyecto.id)}
         contentContainerStyle={estilos.lista}
+        keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={<Campo placeholder="Buscar por proyecto, cliente o tipo" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />}
         ListEmptyComponent={
-          !cargado ? undefined : (
+          !cargado ? undefined : busqueda ? (
+            <Text style={estilos.vacio}>Sin resultados.</Text>
+          ) : (
           <>
             <Text style={estilos.vacio}>No hay proyectos para levantar. Crea uno y empieza a agregar equipos.</Text>
             <Link href="/proyecto/nuevo" asChild>

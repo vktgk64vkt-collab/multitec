@@ -18,6 +18,7 @@ export default function RootLayout() {
         <Stack.Screen name="vista-previa" options={{ title: 'Vista previa' }} />
         <Stack.Screen name="asistente" />
         <Stack.Screen name="bitacora" />
+        <Stack.Screen name="ejecucion" options={{ title: 'Ejecución' }} />
         <Stack.Screen name="factura" />
         <Stack.Screen name="clientes/index" options={{ title: 'Clientes' }} />
         <Stack.Screen name="clientes/[id]" options={{ title: 'Cliente' }} />

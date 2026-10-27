@@ -32,4 +32,13 @@ assert.equal(paso({ estado: 'cerrado', lineas: 3 }), null);
 // el estado "facturado" por sí solo no decide: manda lo que realmente hay (la factura)
 assert.equal(paso({ estado: 'facturado', lineas: 2, total_cts: 100 }).destino, 'cotizacion');
 
+// en ejecución: manda sobre la cotización y lleva al detalle de cambios
+const ejec = paso({ estado: 'en ejecución', lineas: 3, total_cts: 100, ejecucion: { cambios: 2, real_cts: 5000000 } });
+assert.deepEqual([ejec.destino, ejec.boton, ejec.titulo], ['ejecucion', 'Abrir ejecución', 'En ejecución: RD$ 50,000.00']);
+assert.equal(ejec.detalle, '2 cambios sobre la cotización. Revísalos antes de facturar.');
+assert.match(paso({ lineas: 1, ejecucion: { cambios: 1, real_cts: 0 } }).detalle, /^1 cambio sobre/);
+assert.match(paso({ lineas: 1, ejecucion: { cambios: 0, real_cts: 0 } }).detalle, /^Sin cambios/);
+// con factura, la ejecución ya no manda
+assert.equal(paso({ lineas: 3, ejecucion: { cambios: 1, real_cts: 1 }, factura: { ncf: 'B0100000001', saldo_cts: 5, anulada: false } }).destino, 'factura');
+
 console.log('flujo ok');

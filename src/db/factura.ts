@@ -1,7 +1,8 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { totales } from '@/dinero';
-import { listarLineas, obtenerOpciones, type Linea } from './cotizacion';
+import { obtenerOpciones, type Linea } from './cotizacion';
+import { lineasParaFacturar } from './ejecucion';
 
 export interface Factura {
   id: number;
@@ -45,7 +46,7 @@ export type ResultadoFactura = 'ok' | 'sin_monto' | 'ncf_repetido';
 
 /** Congela líneas y totales de la cotización actual. */
 export async function crearFactura(db: SQLiteDatabase, proyectoId: number, ncf: string): Promise<ResultadoFactura> {
-  const lineas = await listarLineas(db, proyectoId);
+  const { lineas } = await lineasParaFacturar(db, proyectoId); // las de la ejecución si ya empezó; si no, las de la cotización
   const op = await obtenerOpciones(db, proyectoId);
   const t = totales(lineas, op.impuesto_pct, op.con_itbis);
   if (t.total <= 0) return 'sin_monto';

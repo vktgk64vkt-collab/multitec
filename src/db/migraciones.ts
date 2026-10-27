@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { CODIGOS_SQL } from '../nomenclatura';
 
-export const VERSION_ACTUAL = 19;
+export const VERSION_ACTUAL = 20;
 
 // Marca las partidas que ya tienen su línea en la cotización (datos anteriores a la suma de líneas repetidas).
 export const EN_COTIZACION_SQL = 'UPDATE levantamiento SET en_cotizacion = 1 WHERE id IN (SELECT partida_id FROM cotizacion_items WHERE partida_id IS NOT NULL)';
@@ -244,6 +244,34 @@ async function aplicar(db: SQLiteDatabase, version: number) {
   if (version < 19) {
     // características del equipo según su tipo (PoE, discos que soporta...), en JSON
     await db.execAsync('ALTER TABLE catalogo ADD COLUMN atributos TEXT');
+  }
+
+  if (version < 20) {
+    // ejecución del proyecto (entre la cotización y la factura): líneas reales con lo cotizado para comparar, y comprobantes con foto
+    await db.execAsync(`
+      ALTER TABLE proyectos ADD COLUMN ejecucion_iniciada_en TEXT;
+      CREATE TABLE IF NOT EXISTS ejecucion_items (
+        id INTEGER PRIMARY KEY NOT NULL,
+        proyecto_id INTEGER NOT NULL REFERENCES proyectos (id) ON DELETE CASCADE,
+        descripcion TEXT NOT NULL,
+        detalle TEXT,
+        cantidad INTEGER NOT NULL,
+        cantidad_cotizada INTEGER NOT NULL DEFAULT 0,
+        precio_cts INTEGER NOT NULL DEFAULT 0,
+        descuento_pct REAL NOT NULL DEFAULT 0,
+        tipo TEXT NOT NULL DEFAULT 'equipo',
+        costo_cts INTEGER NOT NULL DEFAULT 0,
+        item_id INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS comprobantes (
+        id INTEGER PRIMARY KEY NOT NULL,
+        proyecto_id INTEGER NOT NULL REFERENCES proyectos (id) ON DELETE CASCADE,
+        foto_uri TEXT NOT NULL,
+        nota TEXT,
+        monto_cts INTEGER,
+        creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+    `);
   }
 
   await db.execAsync(`PRAGMA user_version = ${VERSION_ACTUAL}`);

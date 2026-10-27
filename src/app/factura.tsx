@@ -5,7 +5,8 @@ import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
 import { listarCatalogo } from '@/db/catalogo';
-import { listarLineas, obtenerOpciones, type Linea } from '@/db/cotizacion';
+import { obtenerOpciones, type Linea } from '@/db/cotizacion';
+import { lineasParaFacturar } from '@/db/ejecucion';
 import {
   anularFactura,
   crearFactura,
@@ -42,6 +43,7 @@ export default function Factura() {
   const [vence, setVence] = useState('');
   const [detalle, setDetalle] = useState<Awaited<ReturnType<typeof listarLineasFactura>>>([]);
   const [areas, setAreas] = useState<string[]>([]);
+  const [deEjecucion, setDeEjecucion] = useState(false);
 
   const cargar = useCallback(
     () =>
@@ -52,7 +54,8 @@ export default function Factura() {
         setDetalle(f ? await listarLineasFactura(db, f.id) : []);
         setAreas(await listarAreas(db, proyectoId));
         if (!f) {
-          const lineas = await listarLineas(db, proyectoId);
+          const { lineas, deEjecucion } = await lineasParaFacturar(db, proyectoId);
+          setDeEjecucion(deEjecucion);
           const op = await obtenerOpciones(db, proyectoId);
           // equipos que piden más de lo que hay en bodega (solo los que llevan conteo)
           const inventario = new Map((await listarCatalogo(db)).map((p) => [p.id, p]));
@@ -182,10 +185,10 @@ export default function Factura() {
       {!factura ? (
         <>
           <Tarjeta>
-            <Etiqueta>Se facturará esta cotización</Etiqueta>
+            <Etiqueta>{deEjecucion ? 'Se facturará lo de la ejecución' : 'Se facturará esta cotización'}</Etiqueta>
             <Text style={estilos.total}>{moneda(cotizacion.total)}</Text>
             <Text style={estilos.detalle}>
-              {cotizacion.lineas.length} línea{cotizacion.lineas.length === 1 ? '' : 's'} · después no cambian aunque edites la cotización
+              {cotizacion.lineas.length} línea{cotizacion.lineas.length === 1 ? '' : 's'} · después no cambian aunque edites {deEjecucion ? 'la ejecución' : 'la cotización'}
             </Text>
             {sinPrecio > 0 ? (
               <Text style={estilos.aviso}>

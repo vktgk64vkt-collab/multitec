@@ -12,7 +12,7 @@ import { BotonDictado } from '@/dictado';
 import { color, tarjeta } from '@/tema';
 import { Boton, Chip, Etiqueta } from '@/ui';
 
-const RUTAS = { levantamiento: '/levantamiento', cotizacion: '/cotizacion', factura: '/factura' } as const;
+const RUTAS = { levantamiento: '/levantamiento', cotizacion: '/cotizacion', ejecucion: '/ejecucion', factura: '/factura' } as const;
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
 
@@ -49,6 +49,13 @@ export default function DetalleProyecto() {
       detalle: resumen && resumen.lineas > 0 ? `Monto total ${moneda(resumen.total_cts)}` : 'Todo el alcance con un solo monto total',
     },
     {
+      ruta: '/ejecucion',
+      titulo: 'Ejecución',
+      detalle: resumen?.ejecucion
+        ? `${plural(resumen.ejecucion.cambios, 'cambio', 'cambios')} · ${plural(resumen.ejecucion.comprobantes, 'comprobante', 'comprobantes')} · ${moneda(resumen.ejecucion.real_cts)}`
+        : 'Cambios del trabajo y comprobantes antes de facturar',
+    },
+    {
       ruta: '/factura',
       titulo: 'Factura',
       detalle: !resumen?.factura
@@ -65,7 +72,7 @@ export default function DetalleProyecto() {
   ] as const;
 
   const paso = resumen
-    ? siguientePaso({ estado: proyecto.estado, partidas: resumen.partidas, lineas: resumen.lineas, total_cts: resumen.total_cts, factura: resumen.factura })
+    ? siguientePaso({ estado: proyecto.estado, partidas: resumen.partidas, lineas: resumen.lineas, total_cts: resumen.total_cts, factura: resumen.factura, ejecucion: resumen.ejecucion })
     : null;
 
   async function irAlPaso(p: Paso) {
