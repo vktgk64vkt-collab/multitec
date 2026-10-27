@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const VERSION_ACTUAL = 7;
+export const VERSION_ACTUAL = 12;
 
 export async function migrarBaseDeDatos(db: SQLiteDatabase) {
   const fila = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -104,6 +104,82 @@ export async function migrarBaseDeDatos(db: SQLiteDatabase) {
         cantidad INTEGER NOT NULL,
         precio_cts INTEGER NOT NULL
       );
+    `);
+  }
+
+  if (version < 8) {
+    // pagos parciales; las facturas ya marcadas como pagadas se convierten en un pago por el total
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS pagos (
+        id INTEGER PRIMARY KEY NOT NULL,
+        factura_id INTEGER NOT NULL REFERENCES facturas (id) ON DELETE CASCADE,
+        monto_cts INTEGER NOT NULL,
+        creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+      INSERT INTO pagos (factura_id, monto_cts) SELECT id, total_cts FROM facturas WHERE pagada = 1;
+    `);
+  }
+
+  if (version < 9) {
+    // descuento por línea, vencimiento de factura (30 días a las existentes), catálogo y perfil del negocio
+    await db.execAsync(`
+      ALTER TABLE cotizacion_items ADD COLUMN descuento_pct REAL NOT NULL DEFAULT 0;
+      ALTER TABLE factura_items ADD COLUMN descuento_pct REAL NOT NULL DEFAULT 0;
+      ALTER TABLE facturas ADD COLUMN vence TEXT;
+      UPDATE facturas SET vence = date(creado_en, '+30 days');
+      CREATE TABLE IF NOT EXISTS catalogo (
+        id INTEGER PRIMARY KEY NOT NULL,
+        nombre TEXT NOT NULL,
+        precio_cts INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS negocio (
+        id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
+        nombre TEXT, rnc TEXT, telefono TEXT, correo TEXT, direccion TEXT, logo_uri TEXT
+      );
+      INSERT OR IGNORE INTO negocio (id) VALUES (1);
+    `);
+  }
+
+  if (version < 10) {
+    // inventario (el antiguo catálogo) con tipo/categoría/costo/stock; las partidas del levantamiento
+    // se enlazan a su línea de cotización (partida_id) y al producto (item_id)
+    await db.execAsync(`
+      ALTER TABLE catalogo ADD COLUMN tipo TEXT NOT NULL DEFAULT 'equipo';
+      ALTER TABLE catalogo ADD COLUMN categoria TEXT;
+      ALTER TABLE catalogo ADD COLUMN costo_cts INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE catalogo ADD COLUMN stock INTEGER;
+      ALTER TABLE levantamiento ADD COLUMN item_id INTEGER;
+      ALTER TABLE cotizacion_items ADD COLUMN tipo TEXT NOT NULL DEFAULT 'equipo';
+      ALTER TABLE cotizacion_items ADD COLUMN costo_cts INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE cotizacion_items ADD COLUMN item_id INTEGER;
+      ALTER TABLE cotizacion_items ADD COLUMN partida_id INTEGER;
+      ALTER TABLE factura_items ADD COLUMN tipo TEXT NOT NULL DEFAULT 'equipo';
+      ALTER TABLE proyectos ADD COLUMN condiciones TEXT;
+    `);
+  }
+
+  if (version < 11) {
+    // 3 precios por artículo (margen % sobre el costo, ITBIS incluido). Los artículos anteriores no tienen
+    // márgenes (NULL) y siguen con su precio fijo. Los proyectos anteriores siguen sumando el ITBIS aparte.
+    await db.execAsync(`
+      ALTER TABLE catalogo ADD COLUMN margen1_pct REAL;
+      ALTER TABLE catalogo ADD COLUMN margen2_pct REAL;
+      ALTER TABLE catalogo ADD COLUMN margen3_pct REAL;
+      ALTER TABLE proyectos ADD COLUMN precios_con_itbis INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE proyectos ADD COLUMN nivel_precio INTEGER NOT NULL DEFAULT 1;
+    `);
+  }
+
+  if (version < 12) {
+    // nomenclatura estándar del inventario: tipo, tecnología, forma, especificación, marca y modelo.
+    // NULL en todas = artículo anterior con nombre libre; "N/A" se guarda como NULL con f_tipo presente.
+    await db.execAsync(`
+      ALTER TABLE catalogo ADD COLUMN f_tipo TEXT;
+      ALTER TABLE catalogo ADD COLUMN f_tecnologia TEXT;
+      ALTER TABLE catalogo ADD COLUMN f_forma TEXT;
+      ALTER TABLE catalogo ADD COLUMN f_especificacion TEXT;
+      ALTER TABLE catalogo ADD COLUMN f_marca TEXT;
+      ALTER TABLE catalogo ADD COLUMN f_modelo TEXT;
     `);
   }
 

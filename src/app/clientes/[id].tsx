@@ -5,15 +5,20 @@ import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-na
 
 import { Alert } from '@/alert';
 import { eliminarCliente, obtenerCliente, type Cliente } from '@/db/clientes';
+import { listarProyectos, type Proyecto } from '@/db/proyectos';
+import { color } from '@/tema';
+import { Boton, Etiqueta, Tarjeta } from '@/ui';
 
 export default function DetalleCliente() {
   const db = useSQLiteContext();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [cliente, setCliente] = useState<Cliente | null>(null);
+  const [proyectos, setProyectos] = useState<Proyecto[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       obtenerCliente(db, Number(id)).then(setCliente);
+      listarProyectos(db).then((ps) => setProyectos(ps.filter((p) => p.cliente_id === Number(id))));
     }, [db, id])
   );
 
@@ -40,53 +45,73 @@ export default function DetalleCliente() {
     {
       etiqueta: 'Dirección',
       valor: cliente.direccion,
-      enlace: cliente.direccion
-        ? `https://maps.apple.com/?q=${encodeURIComponent(cliente.direccion)}`
-        : undefined,
+      enlace: cliente.direccion ? `https://maps.apple.com/?q=${encodeURIComponent(cliente.direccion)}` : undefined,
     },
     { etiqueta: 'ID fiscal', valor: cliente.id_fiscal },
     { etiqueta: 'Notas', valor: cliente.notas },
   ];
 
+  const whatsapp = cliente.telefono?.replace(/\D/g, '');
+
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor}>
       <Text style={estilos.nombre}>{cliente.nombre}</Text>
-      {datos
-        .filter((d) => d.valor)
-        .map((d) => (
-          <View key={d.etiqueta} style={estilos.grupo}>
-            <Text style={estilos.etiqueta}>{d.etiqueta}</Text>
-            <Text
-              style={[estilos.valor, d.enlace && estilos.enlace]}
-              onPress={d.enlace ? () => Linking.openURL(d.enlace as string) : undefined}
-            >
-              {d.valor}
-            </Text>
-          </View>
-        ))}
-      <Text style={estilos.creado}>Registrado: {cliente.creado_en}</Text>
+
+      <View style={estilos.acciones}>
+        {cliente.telefono ? <Boton texto="Llamar" onPress={() => Linking.openURL(`tel:${cliente.telefono}`)} /> : null}
+        {whatsapp ? <Boton tipo="secundario" texto="WhatsApp" onPress={() => Linking.openURL(`https://wa.me/${whatsapp}`)} /> : null}
+      </View>
+
+      <Tarjeta>
+        {datos
+          .filter((d) => d.valor)
+          .map((d) => (
+            <View key={d.etiqueta} style={estilos.grupo}>
+              <Text style={estilos.etiqueta}>{d.etiqueta}</Text>
+              <Text
+                style={[estilos.valor, d.enlace && estilos.enlace]}
+                onPress={d.enlace ? () => Linking.openURL(d.enlace as string) : undefined}>
+                {d.valor}
+              </Text>
+            </View>
+          ))}
+        <Text style={estilos.creado}>Registrado: {cliente.creado_en}</Text>
+      </Tarjeta>
+
+      <Etiqueta>Proyectos ({proyectos.length})</Etiqueta>
+      {proyectos.length === 0 && <Text style={estilos.creado}>Este cliente aún no tiene proyectos.</Text>}
+      {proyectos.map((p) => (
+        <Link key={p.id} href={{ pathname: '/proyecto/[id]', params: { id: p.id } }} asChild>
+          <Pressable>
+            <Tarjeta style={estilos.proyecto}>
+              <Text style={estilos.valor}>{p.nombre}</Text>
+              <Text style={estilos.estado}>{p.estado}</Text>
+            </Tarjeta>
+          </Pressable>
+        </Link>
+      ))}
 
       <Link href={{ pathname: '/clientes/formulario', params: { id: cliente.id } }} asChild>
-        <Pressable style={estilos.boton}>
-          <Text style={estilos.textoBoton}>Editar</Text>
+        <Pressable accessibilityRole="button" style={estilos.editar}>
+          <Text style={estilos.textoEditar}>Editar</Text>
         </Pressable>
       </Link>
-      <Pressable style={[estilos.boton, estilos.peligro]} onPress={confirmarEliminar}>
-        <Text style={estilos.textoBoton}>Eliminar</Text>
-      </Pressable>
+      <Boton tipo="peligro" texto="Eliminar cliente" onPress={confirmarEliminar} />
     </ScrollView>
   );
 }
 
 const estilos = StyleSheet.create({
-  contenedor: { padding: 16, gap: 14 },
-  nombre: { fontSize: 24, fontWeight: '700' },
+  contenedor: { padding: 16, gap: 12 },
+  nombre: { fontSize: 28, fontWeight: '800', color: color.texto },
+  acciones: { gap: 8 },
   grupo: { gap: 2 },
-  etiqueta: { fontSize: 13, fontWeight: '600', opacity: 0.6 },
-  valor: { fontSize: 16 },
-  enlace: { color: '#1e6fa8' },
-  creado: { fontSize: 12, opacity: 0.5 },
-  boton: { padding: 14, borderRadius: 10, backgroundColor: '#12292d', alignItems: 'center' },
-  peligro: { backgroundColor: '#c0262d' },
-  textoBoton: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  etiqueta: { fontSize: 13, fontWeight: '600', color: color.suave },
+  valor: { fontSize: 16, color: color.texto },
+  enlace: { color: color.primario },
+  creado: { fontSize: 12, color: color.suave },
+  proyecto: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  estado: { fontSize: 12, fontWeight: '600', color: color.primario, textTransform: 'capitalize' },
+  editar: { padding: 14, borderRadius: 14, borderWidth: 1, borderColor: color.primario, backgroundColor: color.tarjeta, alignItems: 'center' },
+  textoEditar: { color: color.primario, fontSize: 16, fontWeight: '600' },
 });

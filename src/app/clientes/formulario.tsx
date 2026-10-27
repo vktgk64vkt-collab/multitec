@@ -1,24 +1,26 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
+import { color } from '@/tema';
+import { Campo, Tarjeta } from '@/ui';
 import { actualizarCliente, crearCliente, obtenerCliente, type DatosCliente } from '@/db/clientes';
 
-type Campo = keyof DatosCliente;
+type Clave = keyof DatosCliente;
 
-const CAMPOS: { campo: Campo; etiqueta: string; teclado?: 'phone-pad' | 'email-address'; multilinea?: boolean }[] = [
+const CAMPOS: { campo: Clave; etiqueta: string; teclado?: 'phone-pad' | 'email-address'; multilinea?: boolean }[] = [
   { campo: 'nombre', etiqueta: 'Nombre *' },
   { campo: 'empresa', etiqueta: 'Empresa' },
   { campo: 'telefono', etiqueta: 'Teléfono', teclado: 'phone-pad' },
   { campo: 'correo', etiqueta: 'Correo', teclado: 'email-address' },
   { campo: 'direccion', etiqueta: 'Dirección', multilinea: true },
-  { campo: 'id_fiscal', etiqueta: 'ID fiscal (RFC, NIT, etc.)' },
+  { campo: 'id_fiscal', etiqueta: 'RNC o cédula' },
   { campo: 'notas', etiqueta: 'Notas', multilinea: true },
 ];
 
-const VACIO: Record<Campo, string> = {
+const VACIO: Record<Clave, string> = {
   nombre: '', empresa: '', telefono: '', correo: '', direccion: '', id_fiscal: '', notas: '',
 };
 
@@ -76,34 +78,28 @@ export default function FormularioCliente() {
           ),
         }}
       />
-      {CAMPOS.map(({ campo, etiqueta, teclado, multilinea }) => (
-        <View key={campo} style={estilos.grupo}>
-          <Text style={estilos.etiqueta}>{etiqueta}</Text>
-          <TextInput
-            style={[estilos.input, multilinea && estilos.multilinea]}
-            value={valores[campo]}
-            onChangeText={(t) => setValores((v) => ({ ...v, [campo]: t }))}
-            keyboardType={teclado}
-            autoCapitalize={teclado === 'email-address' ? 'none' : 'sentences'}
-            multiline={multilinea}
-          />
-        </View>
-      ))}
+      <Tarjeta>
+        {CAMPOS.map(({ campo, etiqueta, teclado, multilinea }) => (
+          <View key={campo} style={estilos.grupo}>
+            <Text style={estilos.etiqueta}>{etiqueta}</Text>
+            <Campo
+              value={valores[campo]}
+              onChangeText={(t) => setValores((v) => ({ ...v, [campo]: t }))}
+              keyboardType={teclado}
+              autoCapitalize={teclado === 'email-address' ? 'none' : 'sentences'}
+              multilinea={multilinea}
+              style={multilinea ? { minHeight: 80 } : undefined}
+            />
+          </View>
+        ))}
+      </Tarjeta>
     </ScrollView>
   );
 }
 
 const estilos = StyleSheet.create({
-  contenedor: { padding: 16, gap: 14 },
+  contenedor: { padding: 16 },
   grupo: { gap: 4 },
-  etiqueta: { fontSize: 13, fontWeight: '600', opacity: 0.7 },
-  input: {
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#999',
-    fontSize: 16,
-  },
-  multilinea: { minHeight: 80, textAlignVertical: 'top' },
-  guardar: { color: '#1e6fa8', fontSize: 17, fontWeight: '600' },
+  etiqueta: { fontSize: 13, fontWeight: '600', color: color.suave },
+  guardar: { color: color.primario, fontSize: 17, fontWeight: '600' },
 });

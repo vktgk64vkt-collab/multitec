@@ -1,27 +1,53 @@
 import * as ImagePicker from 'expo-image-picker';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Link, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
+import { listarCatalogo, type Producto } from '@/db/catalogo';
+import { listarLineas, obtenerOpciones } from '@/db/cotizacion';
 import { crearPartida, eliminarPartida, listarPartidas, type Partida } from '@/db/levantamiento';
+import { formatear, precioParaProyecto, totales } from '@/dinero';
 import { guardarFoto, uriFoto } from '@/fotos';
+import { color } from '@/tema';
+import { Boton, Campo, Etiqueta, Tarjeta } from '@/ui';
+
+const MAX_SUGERENCIAS = 12;
 
 export default function Levantamiento() {
   const db = useSQLiteContext();
   const proyectoId = Number(useLocalSearchParams<{ proyecto: string }>().proyecto);
   const [partidas, setPartidas] = useState<Partida[]>([]);
+  const [inventario, setInventario] = useState<Producto[]>([]);
+  const [total, setTotal] = useState(0);
+  const [opciones, setOpciones] = useState({ nivel: 1, con_itbis: false });
+  const [busqueda, setBusqueda] = useState('');
   const [area, setArea] = useState('');
   const [equipo, setEquipo] = useState('');
   const [cantidad, setCantidad] = useState('1');
   const [notas, setNotas] = useState('');
   const [foto, setFoto] = useState<string | null>(null);
 
-  const cargar = useCallback(() => listarPartidas(db, proyectoId).then(setPartidas), [db, proyectoId]);
-  useEffect(() => {
-    cargar();
-  }, [cargar]);
+  const cargar = useCallback(async () => {
+    setPartidas(await listarPartidas(db, proyectoId));
+    setInventario(await listarCatalogo(db));
+    const op = await obtenerOpciones(db, proyectoId);
+    setOpciones(op);
+    setTotal(totales(await listarLineas(db, proyectoId), op.impuesto_pct, op.con_itbis).total);
+  }, [db, proyectoId]);
+  useFocusEffect(
+    useCallback(() => {
+      cargar();
+    }, [cargar])
+  );
+
+  const n = Number(cantidad);
+  const cantidadValida = Number.isInteger(n) && n >= 1;
+  const texto = busqueda.trim().toLowerCase();
+  const sugerencias = inventario
+    .filter((p) => !texto || p.nombre.toLowerCase().includes(texto) || (p.categoria ?? '').toLowerCase().includes(texto))
+    .slice(0, MAX_SUGERENCIAS);
 
   async function tomarFoto() {
     const permiso = await ImagePicker.requestCameraPermissionsAsync();
@@ -30,10 +56,18 @@ export default function Levantamiento() {
     if (!r.canceled) setFoto(r.assets[0].uri);
   }
 
+  async function agregarDelInventario(p: Producto) {
+    if (!area.trim() || !cantidadValida) {
+      return Alert.alert('Faltan datos', 'Escribe el área y una cantidad entera mayor a 0 antes de elegir un equipo.');
+    }
+    await crearPartida(db, proyectoId, { area: area.trim(), equipo: p.nombre, cantidad: n, notas: null, foto_uri: null }, p, precioParaProyecto(p, opciones.nivel, opciones.con_itbis));
+    setCantidad('1');
+    cargar();
+  }
+
   async function agregar() {
-    const n = Number(cantidad);
-    if (!area.trim() || !equipo.trim() || !Number.isInteger(n) || n < 1) {
-      return Alert.alert('Faltan datos', 'Área, equipo y una cantidad entera mayor a 0.');
+    if (!area.trim() || !equipo.trim() || !cantidadValida) {
+      return Alert.alert('Faltan datos', 'Escribe el área, el equipo y una cantidad entera mayor a 0.');
     }
     await crearPartida(db, proyectoId, {
       area: area.trim(),
@@ -50,7 +84,7 @@ export default function Levantamiento() {
   }
 
   function confirmarEliminar(p: Partida) {
-    Alert.alert('Eliminar partida', `¿Eliminar ${p.equipo}?`, [
+    Alert.alert('Eliminar partida', `¿Eliminar ${p.equipo}? También se quita de la cotización.`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Eliminar',
@@ -66,29 +100,71 @@ export default function Levantamiento() {
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Levantamiento' }} />
-      <TextInput style={estilos.campo} placeholder="Área (ej. Entrada, Bodega)" value={area} onChangeText={setArea} />
-      <TextInput style={estilos.campo} placeholder="Equipo (ej. Cámara domo 4MP)" value={equipo} onChangeText={setEquipo} />
-      <TextInput style={estilos.campo} placeholder="Cantidad" keyboardType="number-pad" value={cantidad} onChangeText={setCantidad} />
-      <TextInput style={estilos.campo} placeholder="Notas" value={notas} onChangeText={setNotas} multiline />
-      {foto && <Image source={{ uri: foto }} style={estilos.foto} />}
-      <Pressable style={[estilos.boton, estilos.secundario]} onPress={tomarFoto}>
-        <Text style={estilos.textoSecundario}>{foto ? 'Cambiar foto' : 'Tomar foto'}</Text>
-      </Pressable>
-      <Pressable style={estilos.boton} onPress={agregar}>
-        <Text style={estilos.textoBoton}>Agregar partida</Text>
-      </Pressable>
 
-      <Text style={estilos.etiqueta}>Partidas ({partidas.length})</Text>
+      <Link href={{ pathname: '/cotizacion', params: { proyecto: proyectoId } }} asChild>
+        <Pressable accessibilityRole="button" style={estilos.resumen}>
+          <Text style={estilos.resumenEtiqueta}>Cotización en curso</Text>
+          <Text style={estilos.resumenMonto}>{formatear(total)}</Text>
+        </Pressable>
+      </Link>
+
+      <Tarjeta>
+        <Etiqueta>Dónde estás</Etiqueta>
+        <View style={estilos.fila}>
+          <Campo style={{ flex: 1 }} placeholder="Área (ej. Entrada, Bodega)" value={area} onChangeText={setArea} />
+          <Campo style={estilos.cantidad} placeholder="Cant." keyboardType="number-pad" value={cantidad} onChangeText={setCantidad} />
+        </View>
+      </Tarjeta>
+
+      <Tarjeta>
+        <Etiqueta>Elegir del inventario (usa el Precio {opciones.nivel})</Etiqueta>
+        <Campo placeholder="Buscar equipo o servicio" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" />
+        {inventario.length === 0 ? (
+          <Link href="/inventario" style={estilos.enlace}>
+            El inventario está vacío. Agrega equipos y servicios aquí.
+          </Link>
+        ) : null}
+        {sugerencias.map((p) => (
+          <Pressable key={p.id} style={estilos.sugerencia} onPress={() => agregarDelInventario(p)}>
+            <View style={{ flex: 1 }}>
+              <Text style={estilos.nombre}>{p.nombre}</Text>
+              <Text style={estilos.detalle}>
+                {p.categoria ?? 'Sin categoría'}
+                {p.stock !== null ? ` · stock ${p.stock}` : ''}
+              </Text>
+            </View>
+            <Text style={estilos.precio}>{formatear(precioParaProyecto(p, opciones.nivel, opciones.con_itbis))}</Text>
+          </Pressable>
+        ))}
+        {inventario.length > 0 && sugerencias.length === 0 ? <Text style={estilos.detalle}>Sin resultados.</Text> : null}
+      </Tarjeta>
+
+      <Tarjeta>
+        <Etiqueta>O agrega algo que no está en el inventario</Etiqueta>
+        <Campo placeholder="Equipo (ej. Cámara domo 4MP)" value={equipo} onChangeText={setEquipo} />
+        <Campo placeholder="Notas" value={notas} onChangeText={setNotas} multilinea />
+        {foto && <Image source={{ uri: foto }} style={estilos.foto} />}
+        <Boton tipo="secundario" texto={foto ? 'Cambiar foto' : 'Tomar foto'} onPress={tomarFoto} />
+        <Boton texto="Agregar partida" onPress={agregar} />
+      </Tarjeta>
+
+      <Etiqueta>Partidas ({partidas.length})</Etiqueta>
+      {partidas.length === 0 && (
+        <Text style={estilos.vacio}>Aún no hay partidas. Elige del inventario o agrega el primer equipo que viste en el sitio.</Text>
+      )}
       {partidas.map((p) => (
-        <Pressable key={p.id} style={estilos.fila} onLongPress={() => confirmarEliminar(p)}>
-          <View style={estilos.filaTexto}>
-            <Text style={estilos.nombre}>
-              {p.cantidad} × {p.equipo}
-            </Text>
-            <Text style={estilos.detalle}>{p.area}</Text>
-            {p.notas ? <Text style={estilos.detalle}>{p.notas}</Text> : null}
-          </View>
-          {p.foto_uri ? <Image source={{ uri: uriFoto(p.foto_uri) }} style={estilos.miniatura} /> : null}
+        <Pressable key={p.id} onLongPress={() => confirmarEliminar(p)}>
+          <Tarjeta style={estilos.filaPartida}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={estilos.nombre}>
+                {p.cantidad} × {p.equipo}
+              </Text>
+              <Text style={estilos.detalle}>{p.area}</Text>
+              {p.notas ? <Text style={estilos.detalle}>{p.notas}</Text> : null}
+              {!p.item_id ? <Text style={estilos.aviso}>Sin precio: ponlo en la cotización</Text> : null}
+            </View>
+            {p.foto_uri ? <Image source={{ uri: uriFoto(p.foto_uri) }} style={estilos.miniatura} /> : null}
+          </Tarjeta>
         </Pressable>
       ))}
       {partidas.length > 0 && <Text style={estilos.pista}>Mantén presionada una partida para eliminarla.</Text>}
@@ -97,31 +173,21 @@ export default function Levantamiento() {
 }
 
 const estilos = StyleSheet.create({
-  contenedor: { padding: 16, gap: 10 },
-  campo: {
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#999',
-    fontSize: 16,
-  },
-  foto: { width: '100%', height: 180, borderRadius: 10 },
-  boton: { padding: 14, borderRadius: 10, backgroundColor: '#12292d', alignItems: 'center' },
-  textoBoton: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  secundario: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#12292d' },
-  textoSecundario: { color: '#12292d', fontSize: 16, fontWeight: '600' },
-  etiqueta: { fontSize: 13, fontWeight: '600', opacity: 0.6, marginTop: 12 },
-  fila: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#999',
-  },
-  filaTexto: { flex: 1 },
-  nombre: { fontSize: 16, fontWeight: '600' },
-  detalle: { fontSize: 14, opacity: 0.7, marginTop: 2 },
-  miniatura: { width: 56, height: 56, borderRadius: 8 },
-  pista: { fontSize: 12, opacity: 0.5, textAlign: 'center', marginTop: 8 },
+  contenedor: { padding: 16, gap: 12 },
+  resumen: { padding: 14, borderRadius: 14, backgroundColor: color.primario, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  resumenEtiqueta: { color: '#fff', fontSize: 15 },
+  resumenMonto: { color: '#fff', fontSize: 20, fontWeight: '800' },
+  fila: { flexDirection: 'row', gap: 8 },
+  cantidad: { width: 72, textAlign: 'center' },
+  sugerencia: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.borde },
+  enlace: { color: color.primario, fontSize: 15 },
+  foto: { width: '100%', height: 180, borderRadius: 12 },
+  filaPartida: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  nombre: { fontSize: 16, fontWeight: '600', color: color.texto },
+  precio: { fontSize: 16, fontWeight: '700', color: color.texto },
+  detalle: { fontSize: 14, color: color.suave },
+  aviso: { fontSize: 12, color: color.alerta },
+  miniatura: { width: 56, height: 56, borderRadius: 10 },
+  vacio: { textAlign: 'center', color: color.suave, marginVertical: 8 },
+  pista: { fontSize: 12, color: color.suave, textAlign: 'center' },
 });

@@ -1,7 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
+import { Stack } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Alert } from '@/alert';
 import { exportarRespaldo, restaurarRespaldo } from '@/respaldo';
@@ -9,7 +9,6 @@ import { color } from '@/tema';
 
 export default function Respaldo() {
   const db = useSQLiteContext();
-  const { top } = useSafeAreaInsets();
 
   async function exportar() {
     try {
@@ -40,11 +39,11 @@ export default function Respaldo() {
   }
 
   return (
-    <View style={[estilos.contenedor, { paddingTop: top + 12 }]}>
-      <Text style={estilos.titulo}>Respaldo</Text>
+    <View style={estilos.contenedor}>
+      <Stack.Screen options={{ title: 'Respaldo' }} />
       <Text style={estilos.texto}>
         Guarda una copia de clientes, proyectos, cotizaciones, facturas y bitácora. Envíala a Archivos, AirDrop o correo.
-        Las fotos no van incluidas.
+        Las fotos y el logo no van incluidos.
       </Text>
       <Pressable style={estilos.boton} onPress={exportar}>
         <Text style={estilos.textoBoton}>Exportar respaldo</Text>
@@ -57,8 +56,7 @@ export default function Respaldo() {
 }
 
 const estilos = StyleSheet.create({
-  contenedor: { flex: 1, padding: 16, gap: 12, backgroundColor: color.fondo },
-  titulo: { fontSize: 32, fontWeight: '800', color: color.texto },
+  contenedor: { padding: 16, gap: 12 },
   texto: { fontSize: 15, color: color.suave },
   boton: { padding: 14, borderRadius: 14, backgroundColor: color.primario, alignItems: 'center' },
   peligro: { backgroundColor: '#c0262d' },

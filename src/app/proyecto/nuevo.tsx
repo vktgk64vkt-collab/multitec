@@ -1,11 +1,13 @@
 import { Link, router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { Alert } from '@/alert';
 import { listarClientes, type Cliente } from '@/db/clientes';
 import { crearProyecto, TIPOS } from '@/db/proyectos';
+import { color } from '@/tema';
+import { Boton, Campo, Etiqueta, Tarjeta } from '@/ui';
 
 export default function NuevoProyecto() {
   const db = useSQLiteContext();
@@ -30,9 +32,11 @@ export default function NuevoProyecto() {
 
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
-      <TextInput style={estilos.campo} placeholder="Nombre del proyecto" value={nombre} onChangeText={setNombre} />
+      <Tarjeta>
+        <Campo placeholder="Nombre del proyecto" value={nombre} onChangeText={setNombre} />
+      </Tarjeta>
 
-      <Text style={estilos.etiqueta}>Cliente</Text>
+      <Etiqueta>Cliente</Etiqueta>
       {clientes.length === 0 && (
         <Link href="/clientes/formulario" style={estilos.enlace}>
           No hay clientes. Crea el primero.
@@ -43,38 +47,27 @@ export default function NuevoProyecto() {
           key={c.id}
           style={[estilos.opcion, c.id === clienteId && estilos.activa]}
           onPress={() => setClienteId(c.id)}>
-          <Text style={c.id === clienteId && estilos.textoActivo}>{c.nombre}</Text>
+          <Text style={[estilos.texto, c.id === clienteId && estilos.textoActivo]}>{c.nombre}</Text>
         </Pressable>
       ))}
 
-      <Text style={estilos.etiqueta}>Tipo</Text>
+      <Etiqueta>Tipo</Etiqueta>
       {TIPOS.map((t) => (
         <Pressable key={t} style={[estilos.opcion, t === tipo && estilos.activa]} onPress={() => setTipo(t)}>
-          <Text style={t === tipo && estilos.textoActivo}>{t}</Text>
+          <Text style={[estilos.texto, t === tipo && estilos.textoActivo]}>{t}</Text>
         </Pressable>
       ))}
 
-      <Pressable style={estilos.boton} onPress={guardar}>
-        <Text style={estilos.textoBoton}>Guardar</Text>
-      </Pressable>
+      <Boton texto="Guardar proyecto" onPress={guardar} />
     </ScrollView>
   );
 }
 
 const estilos = StyleSheet.create({
   contenedor: { padding: 16, gap: 10 },
-  campo: {
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#999',
-    fontSize: 16,
-  },
-  etiqueta: { fontSize: 13, fontWeight: '600', opacity: 0.6, marginTop: 6 },
-  enlace: { color: '#1e6fa8', fontSize: 16 },
-  opcion: { padding: 12, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: '#999' },
-  activa: { backgroundColor: '#12292d' },
+  enlace: { color: color.primario, fontSize: 16 },
+  opcion: { padding: 14, borderRadius: 14, backgroundColor: color.tarjeta },
+  activa: { backgroundColor: color.primario },
+  texto: { fontSize: 16, color: color.texto },
   textoActivo: { color: '#fff', fontWeight: '600' },
-  boton: { padding: 14, borderRadius: 10, backgroundColor: '#12292d', alignItems: 'center', marginTop: 8 },
-  textoBoton: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

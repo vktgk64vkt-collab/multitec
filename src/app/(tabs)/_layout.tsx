@@ -13,9 +13,9 @@ export default function Pestanas() {
         <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} md="group" />
         <NativeTabs.Trigger.Label>Clientes</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="respaldo">
-        <NativeTabs.Trigger.Icon sf={{ default: 'externaldrive', selected: 'externaldrive.fill' }} md="backup" />
-        <NativeTabs.Trigger.Label>Respaldo</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="mas">
+        <NativeTabs.Trigger.Icon sf={{ default: 'ellipsis.circle', selected: 'ellipsis.circle.fill' }} md="more_horiz" />
+        <NativeTabs.Trigger.Label>Más</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

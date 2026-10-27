@@ -13,7 +13,7 @@ export default function Inicio() {
   const db = useSQLiteContext();
   const { top } = useSafeAreaInsets();
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
-  const [resumen, setResumen] = useState({ por_cobrar: 0, cobrado: 0 });
+  const [resumen, setResumen] = useState({ por_cobrar: 0, cobrado: 0, vencido: 0 });
 
   useFocusEffect(
     useCallback(() => {
@@ -41,6 +41,12 @@ export default function Inicio() {
               <Text style={[estilos.monto, { color: color.ok }]}>{formatear(resumen.cobrado)}</Text>
             </View>
           </View>
+          {resumen.vencido > 0 ? (
+            <View style={[tarjeta, estilos.resumen, { borderLeftWidth: 4, borderLeftColor: '#c0262d' }]}>
+              <Text style={estilos.etiqueta}>Vencido</Text>
+              <Text style={[estilos.monto, { color: '#c0262d' }]}>{formatear(resumen.vencido)}</Text>
+            </View>
+          ) : null}
           <View style={estilos.fila}>
             <Link href="/proyecto/nuevo" asChild>
               <Pressable style={estilos.accion}>

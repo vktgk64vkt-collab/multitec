@@ -1,10 +1,12 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { Alert } from '@/alert';
 import { crearEntrada, eliminarEntrada, listarEntradas, type Entrada } from '@/db/bitacora';
+import { color } from '@/tema';
+import { Boton, Campo, Tarjeta } from '@/ui';
 
 export default function Bitacora() {
   const db = useSQLiteContext();
@@ -41,21 +43,23 @@ export default function Bitacora() {
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Bitácora' }} />
-      <TextInput
-        style={[estilos.campo, estilos.texto]}
-        placeholder="¿Qué se hizo hoy? Visitas, avances, pendientes..."
-        value={texto}
-        onChangeText={setTexto}
-        multiline
-      />
-      <Pressable style={estilos.boton} onPress={agregar}>
-        <Text style={estilos.textoBoton}>Agregar entrada</Text>
-      </Pressable>
+      <Tarjeta>
+        <Campo
+          placeholder="¿Qué se hizo hoy? Visitas, avances, pendientes..."
+          value={texto}
+          onChangeText={setTexto}
+          multilinea
+        />
+        <Boton texto="Agregar entrada" onPress={agregar} />
+      </Tarjeta>
 
+      {entradas.length === 0 && <Text style={estilos.vacio}>Aún no hay entradas. Anota aquí cada visita y avance.</Text>}
       {entradas.map((e) => (
-        <Pressable key={e.id} style={estilos.fila} onLongPress={() => confirmarEliminar(e)}>
-          <Text style={estilos.fecha}>{e.creado_en}</Text>
-          <Text style={estilos.nota}>{e.texto}</Text>
+        <Pressable key={e.id} onLongPress={() => confirmarEliminar(e)}>
+          <Tarjeta style={{ gap: 2 }}>
+            <Text style={estilos.fecha}>{e.creado_en}</Text>
+            <Text style={estilos.nota}>{e.texto}</Text>
+          </Tarjeta>
         </Pressable>
       ))}
       {entradas.length > 0 && <Text style={estilos.pista}>Mantén presionada una entrada para eliminarla.</Text>}
@@ -64,19 +68,9 @@ export default function Bitacora() {
 }
 
 const estilos = StyleSheet.create({
-  contenedor: { padding: 16, gap: 10 },
-  campo: {
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#999',
-    fontSize: 16,
-  },
-  texto: { minHeight: 90, textAlignVertical: 'top' },
-  boton: { padding: 14, borderRadius: 10, backgroundColor: '#12292d', alignItems: 'center' },
-  textoBoton: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  fila: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#999', gap: 2 },
-  fecha: { fontSize: 12, opacity: 0.5 },
-  nota: { fontSize: 16 },
-  pista: { fontSize: 12, opacity: 0.5, textAlign: 'center', marginTop: 8 },
+  contenedor: { padding: 16, gap: 12 },
+  fecha: { fontSize: 12, color: color.suave },
+  nota: { fontSize: 16, color: color.texto },
+  vacio: { textAlign: 'center', color: color.suave, marginVertical: 8 },
+  pista: { fontSize: 12, color: color.suave, textAlign: 'center' },
 });
