@@ -2,6 +2,7 @@ import { NativeTabs } from 'expo-router/native-tabs';
 
 import { color } from '@/tema';
 
+/** Barra de abajo: Inicio, Levantamiento, Cotización, Facturas y, de último, Proyectos. Todo lo demás está en el menú flotante. */
 export default function Pestanas() {
   return (
     <NativeTabs tintColor={color.primario}>
@@ -9,13 +10,21 @@ export default function Pestanas() {
         <NativeTabs.Trigger.Icon sf={{ default: 'house', selected: 'house.fill' }} md="home" />
         <NativeTabs.Trigger.Label>Inicio</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="clientes">
-        <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} md="group" />
-        <NativeTabs.Trigger.Label>Clientes</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="levantamientos">
+        <NativeTabs.Trigger.Icon sf={{ default: 'checklist', selected: 'checklist' }} md="checklist" />
+        <NativeTabs.Trigger.Label>Levantamiento</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="mas">
-        <NativeTabs.Trigger.Icon sf={{ default: 'ellipsis.circle', selected: 'ellipsis.circle.fill' }} md="more_horiz" />
-        <NativeTabs.Trigger.Label>Más</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="cotizaciones">
+        <NativeTabs.Trigger.Icon sf={{ default: 'doc.text', selected: 'doc.text.fill' }} md="description" />
+        <NativeTabs.Trigger.Label>Cotización</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="facturas">
+        <NativeTabs.Trigger.Icon sf={{ default: 'dollarsign.circle', selected: 'dollarsign.circle.fill' }} md="receipt_long" />
+        <NativeTabs.Trigger.Label>Facturas</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="proyectos">
+        <NativeTabs.Trigger.Icon sf={{ default: 'folder', selected: 'folder.fill' }} md="folder" />
+        <NativeTabs.Trigger.Label>Proyectos</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

@@ -1,7 +1,7 @@
 // Ejecutar: node --experimental-strip-types src/dinero.check.mjs
 import assert from 'node:assert/strict';
 
-import { fechaEn, formatear, formatearFecha, moneda, aCentavos, importe, precioDesdeCosto, precioParaProyecto, preciosArticulo, totales } from './dinero.ts';
+import { sinArea, agruparLineas, fechaEn, formatear, formatearFecha, moneda, aCentavos, importe, precioDesdeCosto, precioParaProyecto, preciosArticulo, totales } from './dinero.ts';
 
 assert.equal(aCentavos('12.5'), 1250);
 assert.equal(aCentavos('12,99'), 1299);
@@ -36,4 +36,18 @@ assert.equal(formatear(150000), '1,500.00');
 assert.equal(formatear(5), '0.05');
 assert.equal(formatear(123456789), '1,234,567.89');
 assert.equal(formatear(-250000), '-2,500.00');
+// líneas repetidas: se suman en una sola, cada una con su precio
+const A = { descripcion: 'Cámara IP', detalle: 'IP67', cantidad: 2, precio_cts: 1000, tipo: 'equipo' };
+const g = agruparLineas([A, { ...A, cantidad: 3 }, { ...A, descripcion: ' cámara ip ', cantidad: 1 }, { ...A, precio_cts: 900 }, { ...A, tipo: 'servicio' }, { ...A, descuento_pct: 10 }]);
+assert.deepEqual(g.map((l) => l.cantidad), [6, 2, 2, 2]); // 2+3+1 juntas; distinto precio, tipo o descuento no se juntan
+assert.equal(importe(g[0]), 6000);
+assert.deepEqual(agruparLineas([A, { ...A, precio_cts: 900, cantidad: 4 }], true).map((l) => l.cantidad), [6]); // propuesta: el precio no cuenta
+assert.deepEqual(agruparLineas([]), []);
+// áreas: solo se quita el sufijo que coincide con un área del proyecto
+assert.equal(sinArea('Cámara IP (Entrada)', ['Bodega', 'entrada']), 'Cámara IP');
+assert.equal(sinArea('Llavero (tag)', ['Entrada']), 'Llavero (tag)'); // paréntesis propios del nombre: no se tocan
+assert.equal(sinArea('Cámara IP', ['Entrada']), 'Cámara IP');
+assert.equal(sinArea('Cámara IP (Entrada) ', ['Entrada']), 'Cámara IP');
+assert.equal(sinArea('Cable (Patio) (Patio)', ['Patio']), 'Cable (Patio)'); // solo el último
+assert.equal(sinArea('X (Entrada)', []), 'X (Entrada)');
 console.log('dinero ok');

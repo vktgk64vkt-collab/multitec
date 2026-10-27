@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { totales } from '@/dinero';
 import { listarLineas, obtenerOpciones } from './cotizacion';
 import { obtenerFactura } from './factura';
+import { listarProyectos, type FiltroProyectos, type Proyecto } from './proyectos';
 
 export interface ResumenProyecto {
   partidas: number;
@@ -30,4 +31,16 @@ export async function resumenProyecto(db: SQLiteDatabase, id: number): Promise<R
     entradas: await contar(db, 'bitacora', id),
     factura: f ? { ncf: f.ncf, saldo_cts: Math.max(0, f.total_cts - pagado), anulada: f.anulada === 1 } : null,
   };
+}
+
+export interface ProyectoConResumen {
+  proyecto: Proyecto;
+  resumen: ResumenProyecto;
+}
+
+/** Los proyectos (en el orden de prioridad de siempre) con lo que lleva cada uno: partidas, cotización y factura. */
+export async function proyectosConResumen(db: SQLiteDatabase, filtro: FiltroProyectos): Promise<ProyectoConResumen[]> {
+  const salida: ProyectoConResumen[] = [];
+  for (const proyecto of await listarProyectos(db, filtro)) salida.push({ proyecto, resumen: await resumenProyecto(db, proyecto.id) });
+  return salida;
 }

@@ -2,7 +2,10 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { CODIGOS_SQL } from '../nomenclatura';
 
-export const VERSION_ACTUAL = 14;
+export const VERSION_ACTUAL = 18;
+
+// Marca las partidas que ya tienen su línea en la cotización (datos anteriores a la suma de líneas repetidas).
+export const EN_COTIZACION_SQL = 'UPDATE levantamiento SET en_cotizacion = 1 WHERE id IN (SELECT partida_id FROM cotizacion_items WHERE partida_id IS NOT NULL)';
 
 export async function migrarBaseDeDatos(db: SQLiteDatabase) {
   // por conexión y fuera de la transacción: sin foreign_keys el ON DELETE CASCADE del esquema no hace nada
@@ -212,6 +215,30 @@ async function aplicar(db: SQLiteDatabase, version: number) {
     `);
     const repetido = await db.getFirstAsync('SELECT 1 FROM facturas GROUP BY ncf HAVING COUNT(*) > 1');
     if (!repetido) await db.execAsync('CREATE UNIQUE INDEX IF NOT EXISTS idx_facturas_ncf ON facturas (ncf)');
+  }
+
+  if (version < 15) {
+    // identidad de la empresa del usuario en sus documentos: lema del pie y color de marca
+    await db.execAsync(`
+      ALTER TABLE negocio ADD COLUMN lema TEXT;
+      ALTER TABLE negocio ADD COLUMN color TEXT;
+    `);
+  }
+
+  if (version < 16) {
+    // la cotización suma las cantidades repetidas en una línea; cada partida recuerda si ya está sumada
+    await db.execAsync('ALTER TABLE levantamiento ADD COLUMN en_cotizacion INTEGER NOT NULL DEFAULT 0');
+    await db.execAsync(EN_COTIZACION_SQL);
+  }
+
+  if (version < 17) {
+    // apodos del artículo: con ellos se encuentra al dictar un pedido ("gabinete 4u pequeño")
+    await db.execAsync('ALTER TABLE catalogo ADD COLUMN apodos TEXT');
+  }
+
+  if (version < 18) {
+    // prioridad del proyecto: 0 baja, 1 media (la de todos los anteriores), 2 alta
+    await db.execAsync('ALTER TABLE proyectos ADD COLUMN prioridad INTEGER NOT NULL DEFAULT 1');
   }
 
   await db.execAsync(`PRAGMA user_version = ${VERSION_ACTUAL}`);

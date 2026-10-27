@@ -12,7 +12,9 @@
     "expo-linking": "~58.0.14",
     "expo-print": "~58.0.7",
     "expo-router": "~58.0.26",
+    "expo-secure-store": "~58.0.2",
     "expo-sharing": "~58.0.20",
+    "expo-splash-screen": "~58.0.11",
     "expo-sqlite": "~58.0.14",
     "expo-status-bar": "~58.0.4",
     "react": "19.3.0",
@@ -34,7 +36,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "pruebas": "node --no-warnings --experimental-strip-types src/dinero.check.mjs && node --no-warnings --experimental-strip-types src/nomenclatura.check.mjs && node --no-warnings --experimental-strip-types src/contacto.check.mjs && node --no-warnings --experimental-strip-types src/db/migraciones.check.mjs && node --no-warnings --experimental-strip-types src/db/flujo.check.mjs && node --no-warnings --experimental-strip-types src/db/codigos.check.mjs && node --no-warnings --experimental-strip-types src/db/facturas.check.mjs",
+    "pruebas": "node --no-warnings --experimental-strip-types src/dinero.check.mjs && node --no-warnings --experimental-strip-types src/nomenclatura.check.mjs && node --no-warnings --experimental-strip-types src/contacto.check.mjs && node --no-warnings --experimental-strip-types src/db/migraciones.check.mjs && node --no-warnings --experimental-strip-types src/db/flujo.check.mjs && node --no-warnings --experimental-strip-types src/db/codigos.check.mjs && node --no-warnings --experimental-strip-types src/db/facturas.check.mjs && node --no-warnings --experimental-strip-types src/db/duplicados.check.mjs && node --no-warnings --experimental-strip-types src/pdfHtml.check.mjs && node --no-warnings --experimental-strip-types src/pedido.check.mjs && node --no-warnings --experimental-strip-types src/db/proyectos.check.mjs",
     "check": "tsc --noEmit && expo lint && npm run pruebas"
   },
   "private": true

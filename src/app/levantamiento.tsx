@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import { Link, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Link, router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -42,6 +42,15 @@ export default function Levantamiento() {
       cargar();
     }, [cargar])
   );
+
+  // un equipo repetido en varias áreas se muestra una sola vez, con el total y el desglose por área
+  const grupos = [...partidas.reduce((m, p) => {
+    const clave = p.item_id !== null ? `i${p.item_id}` : `m${p.equipo.trim().toLowerCase()}`;
+    const g = m.get(clave) ?? { clave, equipo: p.equipo, total: 0, manual: p.item_id === null, partidas: [] as Partida[] };
+    g.total += p.cantidad;
+    g.partidas.push(p);
+    return m.set(clave, g);
+  }, new Map<string, { clave: string; equipo: string; total: number; manual: boolean; partidas: Partida[] }>()).values()];
 
   const n = Number(cantidad);
   const cantidadValida = Number.isInteger(n) && n >= 1;
@@ -132,6 +141,12 @@ export default function Levantamiento() {
         </Pressable>
       </Link>
 
+      <Boton
+        tipo="secundario"
+        texto="Dictar pedido (voz)"
+        onPress={() => router.push({ pathname: '/pedido', params: { proyecto: proyectoId, area } })}
+      />
+
       <Tarjeta>
         <Etiqueta>Dónde estás</Etiqueta>
         <View style={estilos.fila}>
@@ -177,22 +192,33 @@ export default function Levantamiento() {
       {partidas.length === 0 && (
         <Text style={estilos.vacio}>Aún no hay partidas. Elige del inventario o agrega el primer equipo que viste en el sitio.</Text>
       )}
-      {partidas.map((p) => (
-        <Pressable key={p.id} onLongPress={() => confirmarEliminar(p)}>
-          <Tarjeta style={estilos.filaPartida}>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={estilos.nombre}>
-                {p.cantidad} × {p.equipo}
-              </Text>
-              <Text style={estilos.detalle}>{p.area}</Text>
-              {p.notas ? <Text style={estilos.detalle}>{p.notas}</Text> : null}
-              {!p.item_id ? <Text style={estilos.aviso}>Sin precio: ponlo en la cotización</Text> : null}
-            </View>
-            {p.foto_uri ? <Image source={{ uri: uriFoto(p.foto_uri) }} style={estilos.miniatura} /> : null}
-          </Tarjeta>
-        </Pressable>
+      {grupos.map((g) => (
+        <Tarjeta key={g.clave} style={{ gap: 6 }}>
+          <View style={estilos.encabezadoGrupo}>
+            <Text style={[estilos.nombre, { flex: 1 }]}>
+              {g.total} × {g.equipo}
+            </Text>
+            {g.manual ? <Text style={estilos.aviso}>Sin precio</Text> : null}
+          </View>
+          {g.partidas.map((p) => (
+            <Pressable
+              key={p.id}
+              style={estilos.area}
+              accessibilityRole="button"
+              accessibilityHint="Mantén presionado para eliminar"
+              onLongPress={() => confirmarEliminar(p)}>
+              <View style={{ flex: 1 }}>
+                <Text style={estilos.detalle}>
+                  {p.area} · {p.cantidad}
+                </Text>
+                {p.notas ? <Text style={estilos.detalle}>{p.notas}</Text> : null}
+              </View>
+              {p.foto_uri ? <Image source={{ uri: uriFoto(p.foto_uri) }} style={estilos.miniatura} /> : null}
+            </Pressable>
+          ))}
+        </Tarjeta>
       ))}
-      {partidas.length > 0 && <Text style={estilos.pista}>Mantén presionada una partida para eliminarla.</Text>}
+      {partidas.length > 0 && <Text style={estilos.pista}>Mantén presionada un área para eliminarla. Los equipos repetidos se suman en una sola tarjeta.</Text>}
     </ScrollView>
   );
 }
@@ -207,7 +233,8 @@ const estilos = StyleSheet.create({
   sugerencia: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.borde },
   enlace: { color: color.primario, fontSize: 15 },
   foto: { width: '100%', height: 180, borderRadius: 12 },
-  filaPartida: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  encabezadoGrupo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  area: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44, paddingVertical: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.borde },
   nombre: { fontSize: 16, fontWeight: '600', color: color.texto },
   precio: { fontSize: 16, fontWeight: '700', color: color.texto },
   detalle: { fontSize: 14, color: color.suave },

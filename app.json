@@ -8,13 +8,15 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.multitec.app",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "CFBundleDisplayName": "Tekhnia"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#EBD6C2",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
@@ -28,11 +30,20 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Multitec usa la cámara para fotografiar equipos y áreas en los levantamientos.",
+          "cameraPermission": "Tekhnia usa la cámara para fotografiar equipos y áreas en los levantamientos.",
           "microphonePermission": false
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#EBD6C2",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220
+        }
+      ],
+      "expo-secure-store"
     ],
     "scheme": "multitec",
     "experiments": {

@@ -14,13 +14,17 @@ export default function RootLayout() {
         <Stack.Screen name="levantamiento" />
         <Stack.Screen name="cotizacion" />
         <Stack.Screen name="propuesta" />
+        <Stack.Screen name="pedido" options={{ title: 'Dictar pedido' }} />
+        <Stack.Screen name="asistente" />
         <Stack.Screen name="bitacora" />
         <Stack.Screen name="factura" />
+        <Stack.Screen name="clientes/index" options={{ title: 'Clientes' }} />
         <Stack.Screen name="clientes/[id]" options={{ title: 'Cliente' }} />
         <Stack.Screen name="clientes/formulario" />
         <Stack.Screen name="respaldo" />
         <Stack.Screen name="negocio" />
         <Stack.Screen name="inventario" />
+        <Stack.Screen name="inventario/articulo" />
         <Stack.Screen name="reportes" />
       </Stack>
     </SQLiteProvider>

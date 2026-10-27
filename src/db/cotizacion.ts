@@ -28,25 +28,50 @@ export function listarLineas(db: SQLiteDatabase, proyectoId: number) {
 export function contarPartidasPendientes(db: SQLiteDatabase, proyectoId: number) {
   return db
     .getFirstAsync<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM levantamiento l
-       WHERE l.proyecto_id = ? AND NOT EXISTS (SELECT 1 FROM cotizacion_items c WHERE c.partida_id = l.id)`,
+      `SELECT COUNT(*) AS n FROM levantamiento WHERE proyecto_id = ? AND en_cotizacion = 0`,
       proyectoId
     )
     .then((r) => r?.n ?? 0);
 }
 
+/** Pasa a la cotización las partidas escritas a mano (sin inventario). Las que se repiten se suman en una sola línea. */
 export function importarDelLevantamiento(db: SQLiteDatabase, proyectoId: number) {
-  return db.runAsync(
-    `INSERT INTO cotizacion_items (proyecto_id, descripcion, cantidad, partida_id)
-     SELECT proyecto_id, equipo || ' (' || area || ')', cantidad, id FROM levantamiento l
-     WHERE proyecto_id = ? AND NOT EXISTS (SELECT 1 FROM cotizacion_items c WHERE c.partida_id = l.id)
-     ORDER BY id`,
-    proyectoId
-  );
+  return db.withTransactionAsync(async () => {
+    const pendientes = await db.getAllAsync<{ id: number; equipo: string; cantidad: number }>(
+      'SELECT id, equipo, cantidad FROM levantamiento WHERE proyecto_id = ? AND en_cotizacion = 0 ORDER BY id',
+      proyectoId
+    );
+    for (const p of pendientes) {
+      await crearLinea(db, proyectoId, { descripcion: p.equipo, cantidad: p.cantidad, precio_cts: 0 });
+      await db.runAsync('UPDATE levantamiento SET en_cotizacion = 1 WHERE id = ?', p.id);
+    }
+  });
 }
 
-export function crearLinea(db: SQLiteDatabase, proyectoId: number, d: DatosLinea) {
-  return db.runAsync(
+/**
+ * Agrega a la cotización. Si el artículo ya está (mismo artículo del inventario, o mismo nombre en las líneas a mano),
+ * suma la cantidad a esa línea en vez de crear otra: así no se repite el texto.
+ */
+export async function crearLinea(db: SQLiteDatabase, proyectoId: number, d: DatosLinea) {
+  const existente =
+    d.item_id != null
+      ? await db.getFirstAsync<{ id: number; precio_cts: number }>(
+          'SELECT id, precio_cts FROM cotizacion_items WHERE proyecto_id = ? AND item_id = ? ORDER BY id LIMIT 1',
+          proyectoId, d.item_id
+        )
+      : await db.getFirstAsync<{ id: number; precio_cts: number }>(
+          'SELECT id, precio_cts FROM cotizacion_items WHERE proyecto_id = ? AND item_id IS NULL AND lower(trim(descripcion)) = lower(trim(?)) ORDER BY id LIMIT 1',
+          proyectoId, d.descripcion
+        );
+  if (existente) {
+    // si la línea a mano aún no tenía precio y ahora llega uno, se lo queda
+    await db.runAsync(
+      'UPDATE cotizacion_items SET cantidad = cantidad + ?, precio_cts = CASE WHEN precio_cts = 0 THEN ? ELSE precio_cts END WHERE id = ?',
+      d.cantidad, d.precio_cts, existente.id
+    );
+    return;
+  }
+  await db.runAsync(
     `INSERT INTO cotizacion_items (proyecto_id, descripcion, cantidad, precio_cts, tipo, costo_cts, item_id, partida_id, detalle)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     proyectoId, d.descripcion, d.cantidad, d.precio_cts, d.tipo ?? 'equipo', d.costo_cts ?? 0, d.item_id ?? null, d.partida_id ?? null, d.detalle ?? null

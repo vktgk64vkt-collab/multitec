@@ -75,7 +75,55 @@ export function Chip({ texto, activo = false, onPress, borde = false }: { texto:
   );
 }
 
+/**
+ * Barra con despliegue: cerrada muestra solo el nombre del campo y lo elegido; al tocarla se abren las opciones.
+ * Sirve para formularios largos donde cada campo es una elección entre pocas opciones.
+ */
+export function Desplegable({
+  etiqueta,
+  valor,
+  vacio = false,
+  abierto,
+  onAlternar,
+  children,
+}: {
+  etiqueta: string;
+  valor: string;
+  vacio?: boolean;
+  abierto: boolean;
+  onAlternar: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <View style={estilos.desplegable}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${etiqueta}: ${valor}`}
+        accessibilityState={{ expanded: abierto }}
+        style={estilos.desplegableFila}
+        onPress={() => {
+          haptico();
+          onAlternar();
+        }}>
+        <Text style={estilos.desplegableEtiqueta}>{etiqueta}</Text>
+        <Text style={[estilos.desplegableValor, vacio && estilos.desplegableVacio]} numberOfLines={1}>
+          {valor}
+        </Text>
+        <Text style={estilos.desplegableFlecha}>{abierto ? '▴' : '▾'}</Text>
+      </Pressable>
+      {abierto ? <View style={estilos.desplegableCuerpo}>{children}</View> : null}
+    </View>
+  );
+}
+
 const estilos = StyleSheet.create({
+  desplegable: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.borde },
+  desplegableFila: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  desplegableEtiqueta: { width: 118, fontSize: 14, color: color.suave },
+  desplegableValor: { flex: 1, fontSize: 16, fontWeight: '600', color: color.texto, textAlign: 'right' },
+  desplegableVacio: { fontWeight: '400', color: color.suave },
+  desplegableFlecha: { fontSize: 14, color: color.suave, width: 16, textAlign: 'center' },
+  desplegableCuerpo: { paddingBottom: 12, gap: 10 },
   etiqueta: { fontSize: 13, fontWeight: '600', color: color.suave, marginTop: 4 },
   campo: { padding: 12, minHeight: TOQUE_MIN, borderRadius: 12, backgroundColor: color.fondo, fontSize: 16, color: color.texto },
   multilinea: { minHeight: 90, textAlignVertical: 'top' },

@@ -26,13 +26,14 @@ export interface Producto {
   f_modelo: string | null;
   codigo: string | null; // único, automático: CCTV-0001 (null solo en datos muy anteriores)
   descripcion: string | null; // breve; se copia a la cotización y a la factura
+  apodos: string | null; // nombres cortos separados por coma, para encontrarlo al dictar ("gabinete 4u chico, rack chico")
 }
 
 export type DatosProducto = Omit<Producto, 'id' | 'codigo'>;
 
 export function listarCatalogo(db: SQLiteDatabase, busqueda = '') {
   return db.getAllAsync<Producto>(
-    'SELECT * FROM catalogo WHERE nombre LIKE ?1 OR categoria LIKE ?1 OR codigo LIKE ?1 ORDER BY tipo, nombre COLLATE NOCASE',
+    'SELECT * FROM catalogo WHERE nombre LIKE ?1 OR categoria LIKE ?1 OR codigo LIKE ?1 OR apodos LIKE ?1 ORDER BY tipo, nombre COLLATE NOCASE',
     `%${busqueda.trim()}%`
   );
 }
@@ -47,23 +48,27 @@ async function siguienteCodigo(db: SQLiteDatabase, familia: string | null) {
   return `${prefijo}-${String((r?.n ?? 0) + 1).padStart(4, '0')}`;
 }
 
+export function obtenerProducto(db: SQLiteDatabase, id: number) {
+  return db.getFirstAsync<Producto>('SELECT * FROM catalogo WHERE id = ?', id);
+}
+
 export async function crearProducto(db: SQLiteDatabase, d: DatosProducto) {
   const codigo = await siguienteCodigo(db, d.categoria);
   return db.runAsync(
     `INSERT INTO catalogo (nombre, precio_cts, tipo, categoria, costo_cts, stock, margen1_pct, margen2_pct, margen3_pct,
-       f_tipo, f_tecnologia, f_forma, f_especificacion, f_marca, f_modelo, descripcion, codigo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       f_tipo, f_tecnologia, f_forma, f_especificacion, f_marca, f_modelo, descripcion, apodos, codigo)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     d.nombre, d.precio_cts, d.tipo, d.categoria, d.costo_cts, d.stock, d.margen1_pct, d.margen2_pct, d.margen3_pct,
-    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, codigo
+    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, d.apodos, codigo
   );
 }
 
 export function actualizarProducto(db: SQLiteDatabase, id: number, d: DatosProducto) {
   return db.runAsync(
     `UPDATE catalogo SET nombre = ?, precio_cts = ?, tipo = ?, categoria = ?, costo_cts = ?, stock = ?, margen1_pct = ?, margen2_pct = ?, margen3_pct = ?,
-       f_tipo = ?, f_tecnologia = ?, f_forma = ?, f_especificacion = ?, f_marca = ?, f_modelo = ?, descripcion = ? WHERE id = ?`,
+       f_tipo = ?, f_tecnologia = ?, f_forma = ?, f_especificacion = ?, f_marca = ?, f_modelo = ?, descripcion = ?, apodos = ? WHERE id = ?`,
     d.nombre, d.precio_cts, d.tipo, d.categoria, d.costo_cts, d.stock, d.margen1_pct, d.margen2_pct, d.margen3_pct,
-    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, id
+    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, d.apodos, id
   );
 }
 

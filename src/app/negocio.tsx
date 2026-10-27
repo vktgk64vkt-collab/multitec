@@ -2,17 +2,19 @@ import * as ImagePicker from 'expo-image-picker';
 import { Stack } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
 import { guardarNegocio, obtenerNegocio, type Negocio } from '@/db/negocio';
 import { guardarFoto, uriFoto } from '@/fotos';
+import { COLOR_BASE, COLORES_SUGERIDOS, esColorHex, paleta } from '@/marca';
 import { color } from '@/tema';
 import { Boton, Campo, Etiqueta, Tarjeta } from '@/ui';
 
-const VACIO: Negocio = { nombre: null, rnc: null, telefono: null, correo: null, direccion: null, logo_uri: null };
+const VACIO: Negocio = { nombre: null, rnc: null, telefono: null, correo: null, direccion: null, logo_uri: null, lema: null, color: null };
 
-export default function PerfilNegocio() {
+/** Mi empresa: el logo, el nombre, el color y los datos que llevan todos los documentos (cotización, propuesta y factura). */
+export default function MiEmpresa() {
   const db = useSQLiteContext();
   const [n, setN] = useState<Negocio>(VACIO);
 
@@ -21,31 +23,81 @@ export default function PerfilNegocio() {
   }, [db]);
 
   const poner = (campo: keyof Negocio) => (t: string) => setN((v) => ({ ...v, [campo]: t }));
+  const p = paleta(n.color);
 
   async function elegirLogo() {
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7, allowsEditing: true });
+    // sin recorte: los logos horizontales no deben cortarse en cuadrado
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, allowsEditing: false });
     if (!r.canceled) setN((v) => ({ ...v, logo_uri: guardarFoto(r.assets[0].uri) }));
   }
 
   async function guardar() {
+    if (n.color && n.color.trim() && !esColorHex(n.color)) {
+      return Alert.alert('Color inválido', 'Elige uno de los colores o escribe un código como #045883.');
+    }
     const limpio = Object.fromEntries(
       Object.entries(n).map(([k, v]) => [k, typeof v === 'string' && v.trim() ? v.trim() : null])
     ) as unknown as Negocio;
     await guardarNegocio(db, limpio);
-    Alert.alert('Guardado', 'Estos datos saldrán en el encabezado de tus PDF.');
+    Alert.alert('Guardado', 'Tus cotizaciones, propuestas y facturas ya llevan esta identidad.');
   }
 
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
-      <Stack.Screen options={{ title: 'Perfil del negocio' }} />
-      <Text style={estilos.texto}>Estos datos y el logo salen en el encabezado de cada cotización y factura en PDF.</Text>
+      <Stack.Screen options={{ title: 'Mi empresa' }} />
+      <Text style={estilos.texto}>Tu logo, tu color y tus datos salen en el encabezado de cada cotización, propuesta y factura en PDF.</Text>
+
       <Tarjeta>
-        {n.logo_uri ? <Image source={{ uri: uriFoto(n.logo_uri) }} style={estilos.logo} resizeMode="contain" /> : null}
-        <Boton tipo="secundario" texto={n.logo_uri ? 'Cambiar logo' : 'Elegir logo'} onPress={elegirLogo} />
+        <Etiqueta>Así se verá el encabezado</Etiqueta>
+        <View style={estilos.vista}>
+          <View style={[estilos.vistaBarra, { backgroundColor: p.principal }]} />
+          <View style={estilos.vistaCuerpo}>
+            {n.logo_uri ? (
+              <Image source={{ uri: uriFoto(n.logo_uri) }} style={estilos.logo} resizeMode="contain" />
+            ) : (
+              <Text style={[estilos.vistaNombre, { color: p.principal }]}>{n.nombre?.trim() || 'Tu empresa'}</Text>
+            )}
+            <Text style={[estilos.vistaTipo, { color: p.principal }]}>FACTURA</Text>
+          </View>
+          {n.lema?.trim() ? <Text style={[estilos.vistaLema, { color: p.claro }]}>{n.lema.trim().toUpperCase()}</Text> : null}
+        </View>
       </Tarjeta>
+
       <Tarjeta>
-        <Etiqueta>Nombre del negocio</Etiqueta>
-        <Campo value={n.nombre ?? ''} onChangeText={poner('nombre')} />
+        <Etiqueta>Logo</Etiqueta>
+        <Boton tipo="secundario" texto={n.logo_uri ? 'Cambiar logo' : 'Elegir logo de Fotos'} onPress={elegirLogo} />
+        {n.logo_uri ? <Boton tipo="secundario" texto="Quitar logo" onPress={() => setN((v) => ({ ...v, logo_uri: null }))} /> : null}
+        <Text style={estilos.pista}>Mejor un logo horizontal sobre fondo blanco o transparente. Sin logo se usa el nombre.</Text>
+      </Tarjeta>
+
+      <Tarjeta>
+        <Etiqueta>Color de tu marca</Etiqueta>
+        <View style={estilos.colores}>
+          {COLORES_SUGERIDOS.map((c) => (
+            <Pressable
+              key={c}
+              accessibilityRole="button"
+              accessibilityLabel={`Color ${c}`}
+              accessibilityState={{ selected: p.principal === c }}
+              style={[estilos.muestra, { backgroundColor: c }, p.principal === c && estilos.muestraActiva]}
+              onPress={() => setN((v) => ({ ...v, color: c }))}
+            />
+          ))}
+        </View>
+        <Campo
+          placeholder={`O escribe el código (ej. ${COLOR_BASE})`}
+          value={n.color ?? ''}
+          onChangeText={poner('color')}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+      </Tarjeta>
+
+      <Tarjeta>
+        <Etiqueta>Nombre de la empresa</Etiqueta>
+        <Campo placeholder="Ej. Mi Empresa, S.R.L." value={n.nombre ?? ''} onChangeText={poner('nombre')} />
+        <Etiqueta>Lema (pie de los documentos, opcional)</Etiqueta>
+        <Campo placeholder="Ej. Servicios de calidad" value={n.lema ?? ''} onChangeText={poner('lema')} />
         <Etiqueta>RNC</Etiqueta>
         <Campo value={n.rnc ?? ''} onChangeText={poner('rnc')} keyboardType="number-pad" />
         <Etiqueta>Teléfono</Etiqueta>
@@ -63,5 +115,15 @@ export default function PerfilNegocio() {
 const estilos = StyleSheet.create({
   contenedor: { padding: 16, gap: 12 },
   texto: { fontSize: 14, color: color.suave },
-  logo: { width: '100%', height: 100 },
+  pista: { fontSize: 12, color: color.suave },
+  logo: { height: 44, width: 180 },
+  vista: { borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: color.borde, overflow: 'hidden' },
+  vistaBarra: { height: 8 },
+  vistaCuerpo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 },
+  vistaNombre: { fontSize: 18, fontWeight: '700' },
+  vistaTipo: { fontSize: 16, fontWeight: '700', letterSpacing: 2 },
+  vistaLema: { textAlign: 'center', fontSize: 9, letterSpacing: 2, paddingBottom: 10, fontWeight: '600' },
+  colores: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  muestra: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: 'transparent' },
+  muestraActiva: { borderColor: color.texto },
 });

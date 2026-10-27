@@ -88,3 +88,38 @@ export function fechaEn(dias: number, desde = new Date()): string {
   const f = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate() + dias);
   return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
 }
+
+type LineaAgrupable = { descripcion: string; detalle?: string | null; cantidad: number; precio_cts: number; descuento_pct?: number; tipo?: string };
+
+/**
+ * Junta las líneas repetidas (mismo texto, tipo, precio y descuento) sumando sus cantidades, para no repetir texto
+ * en pantalla ni en los documentos. Con `sinPrecios` (propuesta) el precio y el descuento no cuentan al comparar.
+ */
+export function agruparLineas<T extends LineaAgrupable>(lineas: T[], sinPrecios = false): T[] {
+  const grupos = new Map<string, T>();
+  for (const l of lineas) {
+    const clave = [
+      l.descripcion.trim().toLowerCase(),
+      (l.detalle ?? '').trim().toLowerCase(),
+      l.tipo ?? 'equipo',
+      sinPrecios ? '' : l.precio_cts,
+      sinPrecios ? '' : (l.descuento_pct ?? 0),
+    ].join('|');
+    const previa = grupos.get(clave);
+    grupos.set(clave, previa ? { ...previa, cantidad: previa.cantidad + l.cantidad } : { ...l });
+  }
+  return [...grupos.values()];
+}
+
+/**
+ * Quita el " (Área)" del final de una descripción. Las cotizaciones hechas antes de sumar las líneas traían el área
+ * en el texto ("Cámara IP (Entrada)"); solo se quita si coincide con un área del proyecto, nunca por adivinar.
+ */
+export function sinArea(descripcion: string, areas: string[]): string {
+  const d = descripcion.trimEnd();
+  for (const a of areas) {
+    const sufijo = ` (${a.trim()})`;
+    if (a.trim() && d.toLowerCase().endsWith(sufijo.toLowerCase())) return d.slice(0, d.length - sufijo.length).trimEnd();
+  }
+  return descripcion;
+}

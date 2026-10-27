@@ -5,6 +5,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
 import { listarLineas, obtenerOpciones, type Linea } from '@/db/cotizacion';
+import { listarAreas } from '@/db/levantamiento';
 import {
   guardarCondiciones,
   guardarPropuestaIntro,
@@ -50,6 +51,7 @@ export default function Propuesta() {
       cliente: p.cliente,
       proyecto: p.nombre,
       negocio: await negocioParaPdf(db),
+      areas: await listarAreas(db, proyectoId),
       lineas,
       intro,
       condiciones,

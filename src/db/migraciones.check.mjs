@@ -24,4 +24,9 @@ assert.equal(db.prepare('SELECT COUNT(*) c FROM pagos').get().c, 1); // solo la 
 assert.equal(db.prepare('SELECT vence v FROM facturas WHERE id=1').get().v, '2026-10-31');
 assert.equal(db.prepare('SELECT descuento_pct d FROM cotizacion_items').get().d, 0);
 assert.equal(db.prepare('SELECT COUNT(*) c FROM negocio').get().c, 1);
+// v15: la empresa del usuario gana lema y color sin perder lo que ya tenía
+db.exec("UPDATE negocio SET nombre = 'Mi Empresa' WHERE id = 1");
+db.exec(bloque(15));
+db.exec("UPDATE negocio SET lema = 'Servicios de calidad', color = '#045883' WHERE id = 1");
+assert.deepEqual({ ...db.prepare('SELECT nombre, lema, color FROM negocio').get() }, { nombre: 'Mi Empresa', lema: 'Servicios de calidad', color: '#045883' });
 console.log('migraciones ok');

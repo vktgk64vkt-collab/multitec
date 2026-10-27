@@ -156,3 +156,28 @@ export async function resumenFacturas(db: SQLiteDatabase) {
 export function guardarVence(db: SQLiteDatabase, id: number, vence: string | null) {
   return db.runAsync('UPDATE facturas SET vence = ? WHERE id = ?', vence, id);
 }
+
+export interface FilaFactura {
+  id: number;
+  proyecto_id: number;
+  ncf: string;
+  total_cts: number;
+  pagado_cts: number;
+  pagada: number;
+  anulada: number;
+  vence: string | null;
+  creado_en: string;
+  cliente: string;
+  proyecto: string;
+}
+
+/** Todas las facturas, la más reciente primero. Solo las que se pueden abrir (con su proyecto y cliente). */
+export function listarFacturas(db: SQLiteDatabase) {
+  return db.getAllAsync<FilaFactura>(
+    `SELECT f.id, f.proyecto_id, f.ncf, f.total_cts, f.pagada, f.anulada, f.vence, f.creado_en,
+            c.nombre AS cliente, p.nombre AS proyecto,
+            COALESCE((SELECT SUM(monto_cts) FROM pagos WHERE factura_id = f.id), 0) AS pagado_cts
+     FROM facturas f JOIN proyectos p ON p.id = f.proyecto_id JOIN clientes c ON c.id = p.cliente_id
+     ORDER BY f.id DESC`
+  );
+}

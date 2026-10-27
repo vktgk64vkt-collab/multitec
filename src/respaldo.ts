@@ -3,7 +3,7 @@ import * as Sharing from 'expo-sharing';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-import { VERSION_ACTUAL } from '@/db/migraciones';
+import { EN_COTIZACION_SQL, VERSION_ACTUAL } from '@/db/migraciones';
 import { CODIGOS_SQL } from '@/nomenclatura';
 
 // Hijas primero al borrar, padres primero al insertar.
@@ -12,7 +12,7 @@ const TABLAS = ['clientes', 'proyectos', 'levantamiento', 'cotizacion_items', 'b
 /** Exporta la base de datos completa y abre la hoja de compartir. Las fotos NO van incluidas. */
 export async function exportarRespaldo(db: SQLite.SQLiteDatabase) {
   if (Platform.OS === 'web' || !(await Sharing.isAvailableAsync())) return false;
-  const archivo = new File(Paths.cache, `multitec-respaldo-${new Date().toISOString().slice(0, 10)}.db`);
+  const archivo = new File(Paths.cache, `tekhnia-respaldo-${new Date().toISOString().slice(0, 10)}.db`);
   archivo.create({ overwrite: true });
   archivo.write(await db.serializeAsync());
   await Sharing.shareAsync(archivo.uri, { mimeType: 'application/octet-stream', UTI: 'public.data' });
@@ -55,6 +55,8 @@ export async function restaurarRespaldo(db: SQLite.SQLiteDatabase,uriArchivo: st
       }
       // respaldo anterior a los códigos: se les asigna uno a cada artículo
       if (v.user_version < 13) await db.execAsync(CODIGOS_SQL);
+      // respaldo anterior a la suma de líneas: sin esto todas las partidas figurarían como pendientes y se duplicarían
+      if (v.user_version < 16) await db.execAsync(EN_COTIZACION_SQL);
     });
   } finally {
     await db.execAsync('PRAGMA foreign_keys = ON');

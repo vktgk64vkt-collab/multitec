@@ -19,6 +19,7 @@ import {
   obtenerOpciones,
   type Linea,
 } from '@/db/cotizacion';
+import { listarAreas } from '@/db/levantamiento';
 import { guardarCondiciones, obtenerCondiciones, obtenerProyecto } from '@/db/proyectos';
 import { aCentavos, fechaEn, formatear, importe, ITBIS_PCT, moneda, precioParaProyecto, totales } from '@/dinero';
 import { compartirPdf, negocioParaPdf } from '@/pdf';
@@ -151,6 +152,7 @@ export default function Cotizacion() {
       cliente: p.cliente,
       proyecto: p.nombre,
       negocio: await negocioParaPdf(db),
+      areas: await listarAreas(db, proyectoId),
       lineas,
       condiciones,
       preciosConItbis: conItbis,

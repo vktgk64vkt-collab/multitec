@@ -24,6 +24,7 @@ INSERT INTO catalogo(id,nombre,precio_cts) VALUES (1,'Cámara',150000);`);
 db.exec(bloque(10));
 db.exec(bloque(11));
 db.exec(bloque(12));
+db.exec(src.match(/version < 17\) \{[\s\S]*?execAsync\('([^']+)'\)/)[1]); // el SQL real de la migración 17
 
 // inventario con stock y costo
 db.exec(`UPDATE catalogo SET stock = 3, costo_cts = 90000 WHERE id = 1`);
@@ -63,3 +64,8 @@ assert.equal(pr.i, 0); assert.equal(pr.n, 1);
 console.log('v11 ok');
 assert.equal(db.prepare('SELECT f_tipo t, f_modelo m FROM catalogo WHERE id = 1').get().t, null); // artículo anterior: nombre libre
 console.log('v12 ok');
+// v17: apodos para dictar
+db.exec("UPDATE catalogo SET apodos = 'gabinete 4u pequeño, rack chico' WHERE id = 1");
+assert.equal(db.prepare('SELECT apodos a FROM catalogo WHERE id = 1').get().a, 'gabinete 4u pequeño, rack chico');
+assert.equal(db.prepare("SELECT COUNT(*) n FROM catalogo WHERE apodos LIKE '%rack chico%'").get().n, 1); // la búsqueda por apodo
+console.log('v17 ok');

@@ -19,9 +19,11 @@ import {
   type Factura as FacturaDB,
   type Pago,
 } from '@/db/factura';
+import { listarAreas } from '@/db/levantamiento';
 import { obtenerCondiciones } from '@/db/proyectos';
-import { aCentavos, fechaEn, formatear, formatearFecha, importe, moneda, totales } from '@/dinero';
+import { agruparLineas, aCentavos, sinArea, fechaEn, formatear, formatearFecha, importe, moneda, totales } from '@/dinero';
 import { urlWhatsApp } from '@/contacto';
+import { obtenerNegocio } from '@/db/negocio';
 import { compartirPdf, negocioParaPdf } from '@/pdf';
 import { color } from '@/tema';
 import { Boton, Campo, Chip, Etiqueta, Tarjeta } from '@/ui';
@@ -38,6 +40,7 @@ export default function Factura() {
   const [monto, setMonto] = useState('');
   const [vence, setVence] = useState('');
   const [detalle, setDetalle] = useState<Awaited<ReturnType<typeof listarLineasFactura>>>([]);
+  const [areas, setAreas] = useState<string[]>([]);
 
   const cargar = useCallback(
     () =>
@@ -46,6 +49,7 @@ export default function Factura() {
         setVence(f?.vence ?? '');
         setPagos(f ? await listarPagos(db, f.id) : []);
         setDetalle(f ? await listarLineasFactura(db, f.id) : []);
+        setAreas(await listarAreas(db, proyectoId));
         if (!f) {
           const lineas = await listarLineas(db, proyectoId);
           const op = await obtenerOpciones(db, proyectoId);
@@ -91,6 +95,7 @@ export default function Factura() {
       fecha: formatearFecha(f.creado_en),
       vence: f.vence ? formatearFecha(f.vence) : null,
       negocio: await negocioParaPdf(db),
+      areas: await listarAreas(db, proyectoId),
       cliente: f.cliente,
       rnc: f.id_fiscal,
       proyecto: f.proyecto,
@@ -106,10 +111,12 @@ export default function Factura() {
   }
 
   async function whatsapp(f: FacturaDB) {
+    const empresa = (await obtenerNegocio(db))?.nombre?.trim();
+    const firma = empresa ? `\n— ${empresa}` : '';
     const mensaje =
       saldo > 0
-        ? `Hola ${f.cliente}, le recordamos la factura ${f.ncf} por ${moneda(f.total_cts)}. Saldo pendiente: ${moneda(saldo)}${f.vence ? `, vence el ${formatearFecha(f.vence)}` : ''}. Gracias.`
-        : `Hola ${f.cliente}, confirmamos el pago completo de la factura ${f.ncf}. Gracias por su confianza.`;
+        ? `Hola ${f.cliente}, le recordamos la factura ${f.ncf} por ${moneda(f.total_cts)}. Saldo pendiente: ${moneda(saldo)}${f.vence ? `, vence el ${formatearFecha(f.vence)}` : ''}. Gracias.${firma}`
+        : `Hola ${f.cliente}, confirmamos el pago completo de la factura ${f.ncf}. Gracias por su confianza.${firma}`;
     const url = urlWhatsApp(f.telefono, mensaje);
     if (!url) return Alert.alert('Sin teléfono', 'Agrega el teléfono del cliente para escribirle por WhatsApp.');
     await Linking.openURL(url).catch(() => Alert.alert('No se pudo abrir WhatsApp', 'Revisa que esté instalado en este iPhone.'));
@@ -207,7 +214,7 @@ export default function Factura() {
           </Tarjeta>
           <Tarjeta style={estilos.grupo}>
             <Text style={estilos.seccion}>Detalle</Text>
-            {detalle.map((l, i) => (
+            {agruparLineas(detalle.map((l) => ({ ...l, descripcion: sinArea(l.descripcion, areas) }))).map((l, i) => (
               <View key={i} style={estilos.linea}>
                 <View style={{ flex: 1 }}>
                   <Text style={estilos.nombre}>

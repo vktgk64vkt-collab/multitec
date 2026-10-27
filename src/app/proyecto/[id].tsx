@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
 import { resumenProyecto, type ResumenProyecto } from '@/db/resumen';
-import { cambiarEstado, duplicarProyecto, eliminarProyecto, ESTADOS, obtenerProyecto, type Proyecto } from '@/db/proyectos';
+import { cambiarEstado, cambiarPrioridad, duplicarProyecto, PRIORIDADES, eliminarProyecto, ESTADOS, obtenerProyecto, type Proyecto } from '@/db/proyectos';
 import { formatearFecha, moneda } from '@/dinero';
 import { color, tarjeta } from '@/tema';
 import { Boton, Chip, Etiqueta } from '@/ui';
@@ -60,6 +60,11 @@ export default function DetalleProyecto() {
     },
   ] as const;
 
+  async function elegirPrioridad(prioridad: number) {
+    await cambiarPrioridad(db, Number(id), prioridad);
+    setProyecto((p) => p && { ...p, prioridad });
+  }
+
   async function elegirEstado(estado: string) {
     await cambiarEstado(db, Number(id), estado);
     setProyecto((p) => p && { ...p, estado });
@@ -113,6 +118,13 @@ export default function DetalleProyecto() {
           <Chip key={e} borde texto={e} activo={e === proyecto.estado} onPress={() => elegirEstado(e)} />
         ))}
       </ScrollView>
+
+      <Etiqueta>Prioridad</Etiqueta>
+      <View style={estilos.chips}>
+        {[2, 1, 0].map((n) => (
+          <Chip key={n} borde texto={PRIORIDADES[n]} activo={proyecto.prioridad === n} onPress={() => elegirPrioridad(n)} />
+        ))}
+      </View>
 
       <Boton tipo="secundario" texto="Duplicar proyecto" onPress={duplicar} />
       <Boton tipo="peligro" texto="Eliminar proyecto" onPress={confirmarEliminar} />

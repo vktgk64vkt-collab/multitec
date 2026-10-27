@@ -1,10 +1,10 @@
 export const color = {
-  primario: '#1e6fa8',
-  fondo: '#f2f4f7',
+  primario: '#0f2130',
+  fondo: '#f6f0e8',
   tarjeta: '#ffffff',
   texto: '#101828',
-  suave: '#667085',
-  borde: '#e4e7ec',
+  suave: '#596273',
+  borde: '#e6dccf',
   ok: '#12805c',
   alerta: '#b54708',
 };

@@ -3,6 +3,12 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 export const TIPOS = ['CCTV', 'Alarma', 'Control de acceso', 'Cableado', 'Otro'] as const;
 export const ESTADOS = ['levantamiento', 'cotizado', 'en ejecución', 'facturado', 'cerrado'] as const;
 
+// El valor guardado es la posición: 0 baja, 1 media, 2 alta.
+export const PRIORIDADES = ['Baja', 'Media', 'Alta'] as const;
+export const PRIORIDAD_MEDIA = 1;
+
+export type FiltroProyectos = 'activos' | 'cerrados' | 'todos';
+
 export interface Proyecto {
   id: number;
   cliente_id: number;
@@ -10,25 +16,37 @@ export interface Proyecto {
   nombre: string;
   tipo: string;
   estado: string;
+  prioridad: number;
   creado_en: string;
 }
 
 const SELECT = `SELECT p.*, c.nombre AS cliente FROM proyectos p JOIN clientes c ON c.id = p.cliente_id`;
 
-export function listarProyectos(db: SQLiteDatabase) {
-  return db.getAllAsync<Proyecto>(`${SELECT} ORDER BY p.id DESC`);
+/**
+ * Proyectos del más urgente al menos: primero la prioridad (alta, media, baja) y, dentro de cada una, el más reciente.
+ * "Activos" son los que no están cerrados; los cerrados siempre van al final.
+ */
+export function listarProyectos(db: SQLiteDatabase, filtro: FiltroProyectos = 'todos') {
+  const donde = filtro === 'activos' ? "WHERE p.estado <> 'cerrado'" : filtro === 'cerrados' ? "WHERE p.estado = 'cerrado'" : '';
+  return db.getAllAsync<Proyecto>(
+    `${SELECT} ${donde} ORDER BY (p.estado = 'cerrado'), p.prioridad DESC, p.creado_en DESC, p.id DESC`
+  );
 }
 
 export function obtenerProyecto(db: SQLiteDatabase, id: number) {
   return db.getFirstAsync<Proyecto>(`${SELECT} WHERE p.id = ?`, id);
 }
 
-export async function crearProyecto(db: SQLiteDatabase, clienteId: number, nombre: string, tipo: string) {
+export async function crearProyecto(db: SQLiteDatabase, clienteId: number, nombre: string, tipo: string, prioridad = PRIORIDAD_MEDIA) {
   const r = await db.runAsync(
-    'INSERT INTO proyectos (cliente_id, nombre, tipo, impuesto_pct, precios_con_itbis) VALUES (?, ?, ?, 18, 1)', // ITBIS RD; precios con ITBIS incluido
-    clienteId, nombre, tipo
+    'INSERT INTO proyectos (cliente_id, nombre, tipo, prioridad, impuesto_pct, precios_con_itbis) VALUES (?, ?, ?, ?, 18, 1)', // ITBIS RD; precios con ITBIS incluido
+    clienteId, nombre, tipo, prioridad
   );
   return r.lastInsertRowId;
+}
+
+export function cambiarPrioridad(db: SQLiteDatabase, id: number, prioridad: number) {
+  return db.runAsync('UPDATE proyectos SET prioridad = ? WHERE id = ?', prioridad, id);
 }
 
 export function cambiarEstado(db: SQLiteDatabase, id: number, estado: string) {
@@ -40,8 +58,8 @@ export async function duplicarProyecto(db: SQLiteDatabase, id: number) {
   let nuevo = 0;
   await db.withTransactionAsync(async () => {
     const r = await db.runAsync(
-      `INSERT INTO proyectos (cliente_id, nombre, tipo, impuesto_pct, condiciones, precios_con_itbis, nivel_precio, propuesta_intro)
-       SELECT cliente_id, nombre || ' (copia)', tipo, impuesto_pct, condiciones, precios_con_itbis, nivel_precio, propuesta_intro FROM proyectos WHERE id = ?`,
+      `INSERT INTO proyectos (cliente_id, nombre, tipo, prioridad, impuesto_pct, condiciones, precios_con_itbis, nivel_precio, propuesta_intro)
+       SELECT cliente_id, nombre || ' (copia)', tipo, prioridad, impuesto_pct, condiciones, precios_con_itbis, nivel_precio, propuesta_intro FROM proyectos WHERE id = ?`,
       id
     );
     nuevo = r.lastInsertRowId;
