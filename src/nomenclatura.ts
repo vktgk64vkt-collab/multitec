@@ -29,7 +29,7 @@ export const FAMILIAS: Record<string, Familia> = {
     formas: ['Turret', 'Bullet', 'Domo', 'PTZ', 'Cubo', 'Ojo de pez', 'Panorámica', 'Mini bullet', 'Oculta'],
     especificaciones: {
       Cámara: ['2MPX', '3MPX', '4MPX', '5MPX', '6MPX', '8MPX'],
-      NVR: ['4CH', '8CH', '16CH', '32CH', '64CH'],
+      NVR: ['4CH', '8CH', '16CH', '32CH', '64CH', '128CH'],
       DVR: ['4CH', '8CH', '16CH', '32CH'],
       XVR: ['4CH', '8CH', '16CH', '32CH'],
       'Disco duro': ['1TB', '2TB', '4TB', '6TB', '8TB', '10TB'],
@@ -37,7 +37,7 @@ export const FAMILIAS: Record<string, Familia> = {
       Monitor: ['19"', '22"', '24"', '32"', '43"'],
       '*': [],
     },
-    marcas: ['Hikvision', 'Dahua', 'Uniview', 'Axis', 'Hanwha', 'Ezviz', 'Imou', 'Provision-ISR', 'Western Digital', 'Seagate', 'Genérica'],
+    marcas: ['Hikvision', 'Dahua', 'Uniview', 'Epcom', 'Axis', 'Hanwha', 'Ezviz', 'Imou', 'Provision-ISR', 'Western Digital', 'Seagate', 'Genérica'],
   },
   Alarma: {
     codigo: 'ALM',
@@ -53,7 +53,7 @@ export const FAMILIAS: Record<string, Familia> = {
       'Fuente de poder': ['12V 2A', '12V 5A'],
       '*': [],
     },
-    marcas: ['DSC', 'Honeywell', 'Paradox', 'Ajax', 'Bosch', 'Hikvision', 'Texecom', 'Risco', 'Pima', 'Genérica'],
+    marcas: ['DSC', 'Honeywell', 'Paradox', 'Epcom', 'Ajax', 'Bosch', 'Hikvision', 'Texecom', 'Risco', 'Pima', 'Genérica'],
   },
   'Control de acceso': {
     codigo: 'ACC',
@@ -69,7 +69,7 @@ export const FAMILIAS: Record<string, Familia> = {
       'Fuente de poder': ['12V 3A', '12V 5A'],
       '*': [],
     },
-    marcas: ['Hikvision', 'ZKTeco', 'Suprema', 'HID', 'Dahua', 'Paxton', 'Genérica'],
+    marcas: ['Hikvision', 'ZKTeco', 'Epcom', 'Suprema', 'HID', 'Dahua', 'Paxton', 'Genérica'],
   },
   Redes: {
     codigo: 'RED',
@@ -126,7 +126,7 @@ export const FAMILIAS: Record<string, Familia> = {
       Batería: ['12V 4Ah', '12V 7Ah', '12V 9Ah', '12V 100Ah'],
       '*': [],
     },
-    marcas: ['APC', 'CDP', 'Forza', 'Tripp Lite', 'Victron', 'Genérica'],
+    marcas: ['APC', 'CDP', 'Epcom', 'Forza', 'Tripp Lite', 'Victron', 'Genérica'],
   },
   Servicios: {
     codigo: 'SRV',
@@ -170,3 +170,65 @@ const CASO = (alias: string) =>
   `CASE ${alias}.categoria ${Object.entries(FAMILIAS).map(([n, f]) => `WHEN '${n}' THEN '${f.codigo}'`).join(' ')} ELSE '${PREFIJO_GENERICO}' END`;
 export const CODIGOS_SQL = `UPDATE catalogo SET codigo = ${CASO('catalogo')} || '-' || printf('%04d',
   (SELECT COUNT(*) FROM catalogo c WHERE c.id <= catalogo.id AND ${CASO('c')} = ${CASO('catalogo')})) WHERE codigo IS NULL`;
+
+// ---------- características que dependen del tipo de equipo ----------
+// Al elegir el tipo (por ejemplo NVR) la pantalla del artículo muestra solo las características de ese tipo.
+// No forman parte del nombre estándar: se guardan aparte y salen como descripción en la cotización y la factura.
+
+export interface Atributo {
+  clave: string;
+  etiqueta: string;
+  opciones: string[];
+  texto: (valor: string) => string; // cómo se lee en la descripción
+}
+
+const POE: Atributo = { clave: 'poe', etiqueta: 'PoE', opciones: ['Con PoE', 'Sin PoE'], texto: (v) => v };
+const DISCOS: Atributo = {
+  clave: 'discos',
+  etiqueta: 'Discos que soporta',
+  opciones: ['1', '2', '4', '8'],
+  texto: (v) => `Soporta ${v} ${v === '1' ? 'disco' : 'discos'}`,
+};
+
+const ATRIBUTOS_POR_TIPO: Record<string, Atributo[]> = {
+  nvr: [POE, DISCOS],
+  dvr: [DISCOS],
+  xvr: [DISCOS],
+};
+
+const claveTipo = (t: string) => t.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/** Características disponibles para un tipo de equipo; vacío si ese tipo no tiene. */
+export function atributosDe(tipo: string | null | undefined): Atributo[] {
+  return tipo ? (ATRIBUTOS_POR_TIPO[claveTipo(tipo)] ?? []) : [];
+}
+
+export function leerAtributos(json: string | null | undefined): Record<string, string> {
+  try {
+    const d = JSON.parse(json ?? '');
+    return d && typeof d === 'object' && !Array.isArray(d) ? Object.fromEntries(Object.entries(d).filter(([, v]) => typeof v === 'string' && v)) as Record<string, string> : {};
+  } catch {
+    return {};
+  }
+}
+
+/** JSON para guardar: solo las características que ese tipo tiene y que tienen valor. null si no queda ninguna. */
+export function guardarAtributos(tipo: string | null | undefined, valores: Record<string, string>): string | null {
+  const validos = Object.fromEntries(atributosDe(tipo).flatMap((a) => (valores[a.clave]?.trim() ? [[a.clave, valores[a.clave].trim()]] : [])));
+  return Object.keys(validos).length ? JSON.stringify(validos) : null;
+}
+
+/** "Con PoE · Soporta 2 discos": las características del equipo en una línea, en el orden del tipo. */
+export function textoCaracteristicas(tipo: string | null | undefined, json: string | null | undefined): string {
+  const v = leerAtributos(json);
+  return atributosDe(tipo)
+    .filter((a) => v[a.clave])
+    .map((a) => a.texto(v[a.clave]))
+    .join(' · ');
+}
+
+/** Descripción del artículo para la cotización y la factura: sus características y, debajo, su descripción propia. */
+export function detalleArticulo(p: { f_tipo: string | null; atributos: string | null; descripcion: string | null }): string | null {
+  const texto = [textoCaracteristicas(p.f_tipo, p.atributos), p.descripcion?.trim()].filter(Boolean).join('\n');
+  return texto || null;
+}

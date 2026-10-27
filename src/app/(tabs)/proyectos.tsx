@@ -5,10 +5,10 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { listarProyectos, type FiltroProyectos, type Proyecto } from '@/db/proyectos';
 import { normalizar } from '@/pedido';
-import { FilaProyecto } from '@/proyectoUi';
+import { confirmarEliminarProyecto, FilaProyecto } from '@/proyectoUi';
 import { PantallaTab } from '@/pestanas';
 import { color } from '@/tema';
-import { Campo, Chip } from '@/ui';
+import { Campo, Chip, PROPS_TECLADO } from '@/ui';
 
 const FILTROS: { id: FiltroProyectos; texto: string }[] = [
   { id: 'activos', texto: 'En curso' },
@@ -22,10 +22,14 @@ export default function Proyectos() {
   const [filtro, setFiltro] = useState<FiltroProyectos>('activos');
   const [busqueda, setBusqueda] = useState('');
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+  const [cargado, setCargado] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      listarProyectos(db, filtro).then(setProyectos);
+      listarProyectos(db, filtro).then((p) => {
+        setProyectos(p);
+        setCargado(true);
+      });
     }, [db, filtro])
   );
 
@@ -34,7 +38,7 @@ export default function Proyectos() {
 
   return (
     <PantallaTab titulo="Proyectos">
-      <FlatList
+      <FlatList {...PROPS_TECLADO}
         data={visibles}
         keyExtractor={(p) => String(p.id)}
         contentContainerStyle={estilos.lista}
@@ -55,8 +59,14 @@ export default function Proyectos() {
             </View>
           </View>
         }
-        ListEmptyComponent={<Text style={estilos.vacio}>{busqueda ? 'Sin resultados.' : filtro === 'cerrados' ? 'Aún no hay proyectos cerrados.' : 'No hay proyectos.'}</Text>}
-        renderItem={({ item }) => <FilaProyecto proyecto={item} href={{ pathname: '/proyecto/[id]', params: { id: item.id } }} />}
+        ListEmptyComponent={cargado ? <Text style={estilos.vacio}>{busqueda ? 'Sin resultados.' : filtro === 'cerrados' ? 'Aún no hay proyectos cerrados.' : 'No hay proyectos.'}</Text> : undefined}
+        renderItem={({ item }) => (
+          <FilaProyecto
+            proyecto={item}
+            href={{ pathname: '/proyecto/[id]', params: { id: item.id } }}
+            onEliminar={() => confirmarEliminarProyecto(db, item, () => listarProyectos(db, filtro).then(setProyectos))}
+          />
+        )}
       />
     </PantallaTab>
   );

@@ -9,7 +9,7 @@ import { guardarNegocio, obtenerNegocio, type Negocio } from '@/db/negocio';
 import { guardarFoto, uriFoto } from '@/fotos';
 import { COLOR_BASE, COLORES_SUGERIDOS, esColorHex, paleta } from '@/marca';
 import { color } from '@/tema';
-import { Boton, Campo, Etiqueta, Tarjeta } from '@/ui';
+import { Boton, Campo, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const VACIO: Negocio = { nombre: null, rnc: null, telefono: null, correo: null, direccion: null, logo_uri: null, lema: null, color: null };
 
@@ -43,7 +43,7 @@ export default function MiEmpresa() {
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Mi empresa' }} />
       <Text style={estilos.texto}>Tu logo, tu color y tus datos salen en el encabezado de cada cotización, propuesta y factura en PDF.</Text>
 

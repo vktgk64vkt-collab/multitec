@@ -14,9 +14,9 @@ import {
   obtenerPropuestaIntro,
 } from '@/db/proyectos';
 import { moneda, totales } from '@/dinero';
-import { compartirPdf, negocioParaPdf } from '@/pdf';
+import { negocioParaPdf, previsualizar } from '@/pdf';
 import { color } from '@/tema';
-import { Boton, Campo, Etiqueta, Tarjeta } from '@/ui';
+import { Boton, Campo, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const SECCIONES = [
   { tipo: 'equipo', titulo: 'Equipos' },
@@ -45,7 +45,7 @@ export default function Propuesta() {
   async function pdf() {
     const p = await obtenerProyecto(db, proyectoId);
     if (!p || lineas.length === 0) return Alert.alert('Nada que compartir', 'Agrega equipos o servicios a la cotización primero.');
-    const ok = await compartirPdf({
+    previsualizar({
       titulo: `Propuesta #${p.id}`,
       fecha: new Date().toLocaleDateString('en-CA'),
       cliente: p.cliente,
@@ -60,11 +60,10 @@ export default function Propuesta() {
       impuesto: 0,
       total,
     });
-    if (!ok) Alert.alert('No disponible', 'El PDF solo funciona en el iPhone.');
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Propuesta' }} />
       <Text style={estilos.texto}>
         Lleva todo lo que vas a instalar, pero el cliente solo ve el monto total, sin precios por artículo. Sale de la cotización.

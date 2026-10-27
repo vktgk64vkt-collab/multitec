@@ -12,11 +12,15 @@ import { color } from '@/tema';
 export default function Levantamientos() {
   const db = useSQLiteContext();
   const [filas, setFilas] = useState<ProyectoConResumen[]>([]);
+  const [cargado, setCargado] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       // un proyecto ya facturado no se levanta más: para eso están Proyectos o Facturas
-      proyectosConResumen(db, 'activos').then((r) => setFilas(r.filter((x) => !x.resumen.factura)));
+      proyectosConResumen(db, 'activos').then((r) => {
+        setFilas(r.filter((x) => !x.resumen.factura));
+        setCargado(true);
+      });
     }, [db])
   );
 
@@ -27,6 +31,7 @@ export default function Levantamientos() {
         keyExtractor={(f) => String(f.proyecto.id)}
         contentContainerStyle={estilos.lista}
         ListEmptyComponent={
+          !cargado ? undefined : (
           <>
             <Text style={estilos.vacio}>No hay proyectos para levantar. Crea uno y empieza a agregar equipos.</Text>
             <Link href="/proyecto/nuevo" asChild>
@@ -35,6 +40,7 @@ export default function Levantamientos() {
               </Pressable>
             </Link>
           </>
+          )
         }
         renderItem={({ item: { proyecto, resumen } }) => (
           <FilaProyecto

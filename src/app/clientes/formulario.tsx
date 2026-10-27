@@ -6,7 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { intentar } from '@/accion';
 import { Alert } from '@/alert';
 import { color } from '@/tema';
-import { Campo, Tarjeta } from '@/ui';
+import { Campo, Tarjeta, PROPS_TECLADO } from '@/ui';
 import { actualizarCliente, crearCliente, obtenerCliente, type DatosCliente } from '@/db/clientes';
 
 type Clave = keyof DatosCliente;
@@ -68,7 +68,7 @@ export default function FormularioCliente() {
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen
         options={{
           title: idCliente === null ? 'Nuevo cliente' : 'Editar cliente',

@@ -1,12 +1,12 @@
-import { File } from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
+import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { Platform } from 'react-native';
 
 import { obtenerNegocio } from './db/negocio';
 import { uriFoto } from './fotos';
-import { htmlDocumento, type DatosPdf } from './pdfHtml';
+import { htmlDocumento, nombreArchivoPdf, type DatosPdf } from './pdfHtml';
 
 export type { DatosPdf } from './pdfHtml';
 
@@ -25,10 +25,32 @@ export async function negocioParaPdf(db: SQLiteDatabase): Promise<DatosPdf['nego
   }
 }
 
-/** Genera el PDF y abre la hoja de compartir de iOS. Devuelve false si el dispositivo no puede (p. ej. web). */
-export async function compartirPdf(d: DatosPdf) {
-  if (Platform.OS === 'web' || !(await Sharing.isAvailableAsync())) return false;
+// El documento que se está por exportar; la pantalla de vista previa lo toma de aquí (una ruta no puede llevarlo en su dirección).
+let pendiente: DatosPdf | null = null;
+export const documentoPendiente = () => pendiente;
+
+/** Abre la vista previa del documento; desde ahí se comparte. */
+export function previsualizar(d: DatosPdf) {
+  pendiente = d;
+  router.push('/vista-previa');
+}
+
+export interface ArchivoPdf {
+  uri: string;
+  nombre: string;
+}
+
+/** Genera el PDF y lo deja en caché con el nombre del documento ("Cotización 12 - Cliente - Proyecto.pdf"). */
+export async function generarPdf(d: DatosPdf): Promise<ArchivoPdf> {
   const { uri } = await Print.printToFileAsync({ html: htmlDocumento(d) });
-  await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
-  return true;
+  const nombre = nombreArchivoPdf(d);
+  const destino = new File(Paths.cache, nombre);
+  new File(uri).copySync(destino, { overwrite: true });
+  return { uri: destino.uri, nombre };
+}
+
+/** Abre la hoja de compartir de iOS con el archivo ya nombrado. */
+export async function compartirArchivo(a: ArchivoPdf) {
+  if (!(await Sharing.isAvailableAsync())) throw new Error('Compartir no está disponible en este dispositivo.');
+  await Sharing.shareAsync(a.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: a.nombre });
 }

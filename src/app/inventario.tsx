@@ -6,8 +6,10 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Alert } from '@/alert';
 import { eliminarProducto, listarCatalogo, type Producto } from '@/db/catalogo';
 import { formatear, preciosArticulo } from '@/dinero';
+import { FilaDeslizable } from '@/deslizar';
+import { textoCaracteristicas } from '@/nomenclatura';
 import { color } from '@/tema';
-import { Campo, Tarjeta } from '@/ui';
+import { Campo, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const STOCK_BAJO = 2;
 
@@ -38,7 +40,7 @@ export default function Inventario() {
   }
 
   return (
-    <FlatList
+    <FlatList {...PROPS_TECLADO}
       data={productos}
       keyExtractor={(p) => String(p.id)}
       contentInsetAdjustmentBehavior="automatic"
@@ -69,17 +71,14 @@ export default function Inventario() {
           {busqueda ? 'Sin resultados.' : 'El inventario está vacío. Toca "+ Nuevo" para agregar tu primer equipo o servicio.'}
         </Text>
       }
-      ListFooterComponent={productos.length > 0 ? <Text style={estilos.pista}>Toca un artículo para editarlo. Mantén presionado para eliminarlo.</Text> : undefined}
+      ListFooterComponent={productos.length > 0 ? <Text style={estilos.pista}>Toca un artículo para editarlo. Desliza hacia la izquierda para eliminarlo.</Text> : undefined}
       renderItem={({ item: p }) => {
         const [p1, p2, p3] = preciosArticulo(p);
         const auto = p.costo_cts > 0 && p.margen1_pct !== null;
         return (
+          <FilaDeslizable onAccion={() => confirmarEliminar(p)}>
           <Link href={{ pathname: '/inventario/articulo', params: { id: p.id } }} asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={p.nombre}
-              accessibilityHint="Toca para editar. Mantén presionado para eliminar."
-              onLongPress={() => confirmarEliminar(p)}>
+            <Pressable accessibilityRole="button" accessibilityLabel={p.nombre} accessibilityHint="Toca para editar. Desliza hacia la izquierda para eliminar.">
               <Tarjeta style={{ gap: 2 }}>
                 <Text style={estilos.nombre}>{p.nombre}</Text>
                 <Text style={estilos.detalle}>
@@ -87,12 +86,14 @@ export default function Inventario() {
                   {p.categoria ?? 'Sin familia'}
                   {p.stock !== null ? ` · ${p.stock === 0 ? 'sin stock' : `stock ${p.stock}`}` : ''}
                 </Text>
+                {textoCaracteristicas(p.f_tipo, p.atributos) ? <Text style={estilos.caracteristicas}>{textoCaracteristicas(p.f_tipo, p.atributos)}</Text> : null}
                 {p.apodos ? <Text style={estilos.detalle}>Apodos: {p.apodos}</Text> : null}
                 {p.stock !== null && p.stock > 0 && p.stock <= STOCK_BAJO ? <Text style={estilos.bajo}>Stock bajo</Text> : null}
                 <Text style={estilos.precios}>{auto ? `P1 ${formatear(p1)} · P2 ${formatear(p2)} · P3 ${formatear(p3)}` : `Precio ${formatear(p.precio_cts)}`}</Text>
               </Tarjeta>
             </Pressable>
           </Link>
+          </FilaDeslizable>
         );
       }}
     />
@@ -106,6 +107,7 @@ const estilos = StyleSheet.create({
   contador: { fontSize: 13, color: color.suave },
   nombre: { fontSize: 16, fontWeight: '600', color: color.texto },
   detalle: { fontSize: 13, color: color.suave },
+  caracteristicas: { fontSize: 13, fontWeight: '600', color: color.primario },
   precios: { fontSize: 14, fontWeight: '600', color: color.texto, marginTop: 2 },
   bajo: { fontSize: 13, color: '#c0262d', fontWeight: '600' },
   vacio: { textAlign: 'center', color: color.suave, marginVertical: 24 },

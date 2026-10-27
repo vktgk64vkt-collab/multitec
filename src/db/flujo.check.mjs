@@ -69,3 +69,8 @@ db.exec("UPDATE catalogo SET apodos = 'gabinete 4u pequeño, rack chico' WHERE i
 assert.equal(db.prepare('SELECT apodos a FROM catalogo WHERE id = 1').get().a, 'gabinete 4u pequeño, rack chico');
 assert.equal(db.prepare("SELECT COUNT(*) n FROM catalogo WHERE apodos LIKE '%rack chico%'").get().n, 1); // la búsqueda por apodo
 console.log('v17 ok');
+// v19: características del equipo (JSON) según su tipo
+db.exec(src.match(/version < 19\) \{[\s\S]*?execAsync\('([^']+)'\)/)[1]); // el SQL real de la migración 19
+db.exec(`UPDATE catalogo SET atributos = '{"poe":"Con PoE","discos":"2"}' WHERE id = 1`);
+assert.equal(JSON.parse(db.prepare('SELECT atributos a FROM catalogo WHERE id = 1').get().a).discos, '2');
+console.log('v19 ok');

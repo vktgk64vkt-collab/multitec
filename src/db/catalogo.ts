@@ -26,6 +26,7 @@ export interface Producto {
   f_modelo: string | null;
   codigo: string | null; // único, automático: CCTV-0001 (null solo en datos muy anteriores)
   descripcion: string | null; // breve; se copia a la cotización y a la factura
+  atributos: string | null; // características según el tipo (JSON): {"poe":"Con PoE","discos":"2"}
   apodos: string | null; // nombres cortos separados por coma, para encontrarlo al dictar ("gabinete 4u chico, rack chico")
 }
 
@@ -56,19 +57,19 @@ export async function crearProducto(db: SQLiteDatabase, d: DatosProducto) {
   const codigo = await siguienteCodigo(db, d.categoria);
   return db.runAsync(
     `INSERT INTO catalogo (nombre, precio_cts, tipo, categoria, costo_cts, stock, margen1_pct, margen2_pct, margen3_pct,
-       f_tipo, f_tecnologia, f_forma, f_especificacion, f_marca, f_modelo, descripcion, apodos, codigo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       f_tipo, f_tecnologia, f_forma, f_especificacion, f_marca, f_modelo, descripcion, apodos, atributos, codigo)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     d.nombre, d.precio_cts, d.tipo, d.categoria, d.costo_cts, d.stock, d.margen1_pct, d.margen2_pct, d.margen3_pct,
-    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, d.apodos, codigo
+    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, d.apodos, d.atributos, codigo
   );
 }
 
 export function actualizarProducto(db: SQLiteDatabase, id: number, d: DatosProducto) {
   return db.runAsync(
     `UPDATE catalogo SET nombre = ?, precio_cts = ?, tipo = ?, categoria = ?, costo_cts = ?, stock = ?, margen1_pct = ?, margen2_pct = ?, margen3_pct = ?,
-       f_tipo = ?, f_tecnologia = ?, f_forma = ?, f_especificacion = ?, f_marca = ?, f_modelo = ?, descripcion = ?, apodos = ? WHERE id = ?`,
+       f_tipo = ?, f_tecnologia = ?, f_forma = ?, f_especificacion = ?, f_marca = ?, f_modelo = ?, descripcion = ?, apodos = ?, atributos = ? WHERE id = ?`,
     d.nombre, d.precio_cts, d.tipo, d.categoria, d.costo_cts, d.stock, d.margen1_pct, d.margen2_pct, d.margen3_pct,
-    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, d.apodos, id
+    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, d.apodos, d.atributos, id
   );
 }
 

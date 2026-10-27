@@ -174,3 +174,15 @@ export function htmlDocumento(d: DatosPdf) {
     </div>
   </body></html>`;
 }
+
+/**
+ * Nombre con el que se guarda y se comparte el PDF: "Cotización 12 - Cliente - Proyecto.pdf"; las facturas llevan su NCF.
+ * Sin caracteres que los archivos no admiten y con un largo razonable.
+ */
+export function nombreArchivoPdf(d: DatosPdf): string {
+  const { tipo, numero, anulada } = partesTitulo(d.titulo);
+  const identificador = d.ncf ?? numero.replace('#', '');
+  const limpio = (t: string) => t.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const partes = [`${tipo}${identificador ? ` ${identificador}` : ''}${anulada ? ' (ANULADA)' : ''}`, d.cliente, d.proyecto].map(limpio).filter(Boolean);
+  return `${partes.join(' - ').slice(0, 120).trim()}.pdf`;
+}

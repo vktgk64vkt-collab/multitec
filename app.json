@@ -31,7 +31,8 @@
         "expo-image-picker",
         {
           "cameraPermission": "Tekhnia usa la cámara para fotografiar equipos y áreas en los levantamientos.",
-          "microphonePermission": false
+          "photosPermission": "Tekhnia usa tus fotos para elegir el logo de tu empresa.",
+          "microphonePermission": "Tekhnia usa el micrófono para que dictes tus pedidos."
         }
       ],
       "expo-sharing",
@@ -43,7 +44,14 @@
           "imageWidth": 220
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Tekhnia usa el micrófono para que dictes tus pedidos.",
+          "speechRecognitionPermission": "Tekhnia usa el reconocimiento de voz para entender lo que dictas."
+        }
+      ]
     ],
     "scheme": "multitec",
     "experiments": {

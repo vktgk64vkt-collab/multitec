@@ -16,8 +16,11 @@ import {
 import { aCentavos, formatear, ITBIS_PCT, MARGENES_BASE, precioDesdeCosto } from '@/dinero';
 import {
   armarNombre,
+  atributosDe,
   CASILLAS,
   FAMILIAS,
+  guardarAtributos,
+  leerAtributos,
   NA,
   NOMBRES_FAMILIAS,
   PARTES_VACIAS,
@@ -27,7 +30,7 @@ import {
 } from '@/nomenclatura';
 import { normalizar, separarApodos } from '@/pedido';
 import { color } from '@/tema';
-import { Boton, Campo, Chip, Desplegable, Etiqueta, Tarjeta } from '@/ui';
+import { Boton, Campo, Chip, Desplegable, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const BASE = MARGENES_BASE.map(String);
 const esNA = (t: string) => t.trim().toUpperCase() === NA;
@@ -54,8 +57,10 @@ export default function Articulo() {
   const [stock, setStock] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [apodos, setApodos] = useState('');
+  const [extras, setExtras] = useState<Record<string, string>>({}); // características del tipo elegido (PoE, discos...)
 
   const f = FAMILIAS[familia];
+  const defs = atributosDe(partes.tipo); // solo las características del equipo elegido
   const nombre = armarNombre(partes);
   const costoCts = costo.trim() === '' ? 0 : aCentavos(costo);
   const calculado = costoCts !== null && costoCts > 0;
@@ -82,6 +87,7 @@ export default function Articulo() {
     setPrecio(p.precio_cts ? String(p.precio_cts / 100) : '');
     setDescripcion(p.descripcion ?? '');
     setApodos(p.apodos ?? '');
+    setExtras(leerAtributos(p.atributos));
   }, []);
 
   useEffect(() => {
@@ -207,6 +213,7 @@ Un apodo debe llevar a un solo artículo.`);
           stock: n,
           descripcion: descripcion.trim() || null,
           apodos: misApodos.join(', ') || null,
+          atributos: guardarAtributos(partes.tipo, extras),
           ...precios,
           f_tipo: partes.tipo.trim(),
           f_tecnologia: esNA(partes.tecnologia) ? null : partes.tecnologia.trim(),
@@ -239,7 +246,7 @@ Un apodo debe llevar a un solo artículo.`);
       : 'Falta el precio';
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: editando ? 'Editar artículo' : 'Nuevo artículo' }} />
 
       <View style={estilos.vista}>
@@ -306,6 +313,40 @@ Un apodo debe llevar a un solo artículo.`);
           />
           <Chip borde texto="N/A" activo={esNA(partes.modelo)} onPress={() => setPartes((p) => ({ ...p, modelo: esNA(p.modelo) ? '' : NA }))} />
         </View>
+        {defs.length > 0 ? (
+          <>
+            <Text style={estilos.subtitulo}>Características del {partes.tipo.trim()}</Text>
+            {defs.map((d) => {
+              const valor = extras[d.clave] ?? '';
+              const propio = valor !== '' && !d.opciones.includes(valor);
+              const clave = `x-${d.clave}`;
+              return (
+                <Desplegable key={d.clave} etiqueta={d.etiqueta} valor={valor || 'Sin especificar'} vacio={!valor} abierto={abierto === clave} onAlternar={() => alternar(clave)}>
+                  <View style={estilos.opciones}>
+                    {d.opciones.map((o) => (
+                      <Chip
+                        key={o}
+                        texto={o}
+                        activo={valor === o}
+                        onPress={() => {
+                          setExtras((e) => ({ ...e, [d.clave]: valor === o ? '' : o }));
+                          setAbierto(null);
+                        }}
+                      />
+                    ))}
+                  </View>
+                  <Campo
+                    placeholder="Otro: escríbelo"
+                    accessibilityLabel={`${d.etiqueta}, otro valor`}
+                    value={propio ? valor : ''}
+                    autoCorrect={false}
+                    onChangeText={(t) => setExtras((e) => ({ ...e, [d.clave]: t }))}
+                  />
+                </Desplegable>
+              );
+            })}
+          </>
+        ) : null}
       </Tarjeta>
 
       <Tarjeta>
@@ -379,6 +420,7 @@ const estilos = StyleSheet.create({
   vistaEtiqueta: { fontSize: 12, color: color.suave },
   vistaNombre: { fontSize: 20, fontWeight: '700', color: color.texto },
   aviso: { fontSize: 13, color: color.alerta },
+  subtitulo: { fontSize: 13, fontWeight: '700', color: color.primario, marginTop: 12 },
   opciones: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filaModelo: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10 },
   etiquetaModelo: { width: 118, fontSize: 14, color: color.suave },

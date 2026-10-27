@@ -7,6 +7,7 @@ export interface ArticuloPedido {
   nombre: string;
   apodos: string[];
   tipo: string;
+  extras?: string; // características del equipo: "Con PoE · Soporta 2 discos"
 }
 
 export interface LineaPedido {
@@ -63,7 +64,14 @@ function mismoToken(a: string, b: string): boolean {
   return corto.length >= 4 && largo.startsWith(corto);
 }
 
-const palabras = (texto: string) => normalizar(texto).split(' ').filter(Boolean);
+const palabras = (texto: string) =>
+  normalizar(texto)
+    .replace(/\b(\d+) (canales|canal)\b/g, '$1ch') // "16 canales" = 16CH
+    .replace(/\b(\d+) (megapixeles|megapixel|megas)\b/g, '$1mpx')
+    .replace(/\bcon poe\b/g, 'poe')
+    .replace(/\bsin poe\b/g, 'sinpoe')
+    .split(' ')
+    .filter(Boolean);
 const clave = (texto: string) => palabras(texto).filter((p) => !RELLENO.has(p)).map((p) => SINONIMOS[p] ?? p);
 const peso = (t: string) => (/\d/.test(t) ? 2 : 1); // 4u, 4mpx, 305m distinguen más que "cámara"
 
@@ -85,6 +93,96 @@ function cantidadYResto(segmento: string): { cantidad: number; resto: string[] }
 
 const SEPARADOR = /[.,;:\n]+|\s+(?:y|además|ademas|también|tambien|luego|después|despues)\s+/i;
 
+// ---------- números dictados ----------
+
+const UNIDADES: Record<string, number> = {
+  cero: 0, un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
+  once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19,
+  veinte: 20, veintiun: 21, veintiuno: 21, veintiuna: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25,
+  veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29,
+};
+const DECENAS: Record<string, number> = { treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90 };
+const CENTENAS: Record<string, number> = {
+  cien: 100, ciento: 100, doscientos: 200, doscientas: 200, trescientos: 300, trescientas: 300, cuatrocientos: 400, cuatrocientas: 400,
+  quinientos: 500, quinientas: 500, seiscientos: 600, seiscientas: 600, setecientos: 700, setecientas: 700, ochocientos: 800,
+  ochocientas: 800, novecientos: 900, novecientas: 900,
+};
+const esPalabraNumero = (w: string) => w in UNIDADES || w in DECENAS || w in CENTENAS || w === 'mil';
+
+/** Lee un número en palabras desde `desde` ("treinta y cinco", "mil doscientos"). Devuelve el valor y cuántas palabras usó. */
+function leerNumero(p: string[], desde: number): { valor: number; usadas: number } | null {
+  let i = desde;
+  // menor de mil: centenas, luego decenas con su "y" unidad, o una unidad
+  const menor = (): number | null => {
+    let v = 0;
+    let usado = false;
+    if (p[i] in CENTENAS) {
+      v += CENTENAS[p[i]];
+      i++;
+      usado = true;
+    }
+    if (p[i] in DECENAS) {
+      v += DECENAS[p[i]];
+      i++;
+      usado = true;
+      if (p[i] === 'y' && p[i + 1] in UNIDADES && UNIDADES[p[i + 1]] >= 1 && UNIDADES[p[i + 1]] <= 9) {
+        v += UNIDADES[p[i + 1]];
+        i += 2;
+      }
+    } else if (p[i] in UNIDADES) {
+      v += UNIDADES[p[i]];
+      i++;
+      usado = true;
+    }
+    return usado ? v : null;
+  };
+  let total = 0;
+  const primero = menor();
+  if (p[i] === 'mil') {
+    total += (primero ?? 1) * 1000;
+    i++;
+    total += menor() ?? 0;
+  } else if (primero !== null) {
+    total += primero;
+  } else {
+    return null;
+  }
+  return { valor: total, usadas: i - desde };
+}
+
+/**
+ * Pasa los números dictados en palabras a dígitos: "tres cámaras" -> "3 cámaras", "treinta y cinco" -> "35".
+ * Une también el número con su unidad pegada: "cuatro u" -> "4u", "ocho p" -> "8p", "dos mpx" -> "2mpx".
+ */
+export function numerosEnDigitos(texto: string): string {
+  const trozos = texto.match(/\p{L}+|\d+|[^\p{L}\d]+/gu) ?? [];
+  const palabra = (t: string) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  let salida = '';
+  for (let i = 0; i < trozos.length; i++) {
+    const t = trozos[i];
+    if (!/^\p{L}/u.test(t) || !esPalabraNumero(palabra(t))) {
+      salida += t;
+      continue;
+    }
+    // palabras seguidas (separadas solo por espacios) que podrían formar un solo número
+    const palabras: string[] = [];
+    const posiciones: number[] = [];
+    for (let j = i; j < trozos.length && /^\p{L}/u.test(trozos[j]); j += 2) {
+      palabras.push(palabra(trozos[j]));
+      posiciones.push(j);
+      if (!trozos[j + 1] || !/^\s+$/.test(trozos[j + 1])) break;
+    }
+    const n = leerNumero(palabras, 0);
+    if (!n) {
+      salida += t;
+      continue;
+    }
+    salida += String(n.valor);
+    i = posiciones[n.usadas - 1];
+  }
+  return salida.replace(/(\d+)\s+(mpx|mp|tb|gb|ch|va|ah|u|p|w|v|m)(?![\p{L}\d])/giu, '$1$2');
+}
+
 // ---------- sin conexión ----------
 
 /** Cuánto de lo dicho (0 a 1) aparece en el artículo, contando sus apodos. 1 = todo. */
@@ -96,10 +194,11 @@ function cobertura(resto: string[], tokensArticulo: string[]): number {
 }
 
 /** Entiende el pedido comparando palabras con el nombre y los apodos de cada artículo. No usa internet ni IA. */
-export function entenderLocal(texto: string, inventario: ArticuloPedido[]): ResultadoPedido {
+export function entenderLocal(textoDictado: string, inventario: ArticuloPedido[]): ResultadoPedido {
+  const texto = numerosEnDigitos(textoDictado);
   const preparados = inventario.map((a) => ({
     a,
-    tokens: [...new Set([...clave(a.nombre), ...a.apodos.flatMap((x) => clave(x))])],
+    tokens: [...new Set([...clave(a.nombre), ...a.apodos.flatMap((x) => clave(x)), ...clave(a.extras ?? '')])],
     apodos: a.apodos.map((x) => clave(x).sort().join(' ')),
   }));
   const lineas: LineaPedido[] = [];
@@ -160,7 +259,8 @@ Reglas:
 - "texto" es el fragmento dictado que originó la línea.
 - "notas": una frase corta solo si algo del pedido no se pudo interpretar; si no, null.
 
-Formato del inventario, una línea por artículo: id | nombre | apodos | tipo`;
+Formato del inventario, una línea por artículo: id | nombre | apodos | tipo | características (si tiene)
+Las características (por ejemplo PoE o discos que soporta) ayudan a distinguir equipos parecidos.`;
 
 const ESQUEMA = {
   type: 'object',
@@ -191,7 +291,7 @@ const ESQUEMA = {
 export function armarPeticion(texto: string, inventario: ArticuloPedido[], modelo: string, areaActual: string | null) {
   const lista = [...inventario]
     .sort((a, b) => a.id - b.id) // mismo orden siempre: así el inventario se puede guardar en caché entre pedidos
-    .map((a) => `${a.id} | ${a.nombre} | ${a.apodos.join('; ')} | ${a.tipo}`)
+    .map((a) => `${a.id} | ${a.nombre} | ${a.apodos.join('; ')} | ${a.tipo}${a.extras ? ` | ${a.extras}` : ''}`)
     .join('\n');
   return {
     model: modelo,

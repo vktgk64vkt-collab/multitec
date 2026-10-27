@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { Producto } from './catalogo';
+import { detalleArticulo } from '../nomenclatura';
 import { crearLinea } from './cotizacion';
 
 export interface Partida {
@@ -55,7 +56,7 @@ export function crearPartida(db: SQLiteDatabase, proyectoId: number, d: DatosPar
       tipo: item.tipo,
       costo_cts: item.costo_cts,
       item_id: item.id,
-      detalle: item.descripcion,
+      detalle: detalleArticulo(item),
     });
   });
 }

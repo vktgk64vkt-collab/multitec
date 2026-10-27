@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { CODIGOS_SQL } from '../nomenclatura';
 
-export const VERSION_ACTUAL = 18;
+export const VERSION_ACTUAL = 19;
 
 // Marca las partidas que ya tienen su línea en la cotización (datos anteriores a la suma de líneas repetidas).
 export const EN_COTIZACION_SQL = 'UPDATE levantamiento SET en_cotizacion = 1 WHERE id IN (SELECT partida_id FROM cotizacion_items WHERE partida_id IS NOT NULL)';
@@ -239,6 +239,11 @@ async function aplicar(db: SQLiteDatabase, version: number) {
   if (version < 18) {
     // prioridad del proyecto: 0 baja, 1 media (la de todos los anteriores), 2 alta
     await db.execAsync('ALTER TABLE proyectos ADD COLUMN prioridad INTEGER NOT NULL DEFAULT 1');
+  }
+
+  if (version < 19) {
+    // características del equipo según su tipo (PoE, discos que soporta...), en JSON
+    await db.execAsync('ALTER TABLE catalogo ADD COLUMN atributos TEXT');
   }
 
   await db.execAsync(`PRAGMA user_version = ${VERSION_ACTUAL}`);

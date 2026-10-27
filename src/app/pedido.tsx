@@ -1,17 +1,23 @@
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { Link, router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { intentar, mensajeError } from '@/accion';
 import { Alert } from '@/alert';
 import { entenderConClaude, leerClave } from '@/claude';
 import { listarCatalogo, type Producto } from '@/db/catalogo';
 import { obtenerOpciones } from '@/db/cotizacion';
 import { crearPartida } from '@/db/levantamiento';
+import type { Proyecto } from '@/db/proyectos';
+import { proyectosConResumen } from '@/db/resumen';
+import { IconoMic } from '@/dictado';
 import { precioParaProyecto } from '@/dinero';
-import { entenderLocal, separarApodos, type ArticuloPedido, type ResultadoPedido } from '@/pedido';
+import { textoCaracteristicas } from '@/nomenclatura';
+import { entenderLocal, numerosEnDigitos, separarApodos, type ArticuloPedido, type ResultadoPedido } from '@/pedido';
 import { color } from '@/tema';
-import { Boton, Campo, Chip, Etiqueta, Tarjeta } from '@/ui';
+import { Boton, Campo, Chip, Etiqueta, PROPS_TECLADO, Tarjeta } from '@/ui';
 
 interface Revision {
   clave: number;
@@ -23,29 +29,60 @@ interface Revision {
   manual: boolean; // agregar tal cual se dictó, sin artículo del inventario (queda sin precio)
 }
 
-const aArticulo = (p: Producto): ArticuloPedido => ({ id: p.id, nombre: p.nombre, apodos: separarApodos(p.apodos), tipo: p.tipo });
+const aArticulo = (p: Producto): ArticuloPedido => ({
+  id: p.id,
+  nombre: p.nombre,
+  apodos: separarApodos(p.apodos),
+  tipo: p.tipo,
+  extras: textoCaracteristicas(p.f_tipo, p.atributos) || undefined,
+});
 const capitalizar = (t: string) => t.trim().charAt(0).toUpperCase() + t.trim().slice(1);
 
-/** Dictar un pedido: se entiende, se revisa con los nombres reales del inventario y recién entonces se agrega al levantamiento. */
+/** Palabras de tu inventario que ayudan al reconocimiento de voz a acertar "turret", "Hikvision", tus apodos... */
+function palabrasClave(inventario: Producto[]): string[] {
+  const todas = inventario.flatMap((p) => [...separarApodos(p.apodos), p.f_tipo, p.f_forma, p.f_marca, p.f_modelo]);
+  return [...new Set(todas.filter((x): x is string => !!x && x.length > 1))].slice(0, 100);
+}
+
+/**
+ * Dictar un pedido. Un toque en el botón de voz y hablas; al terminar, Claude (o el entendedor local si no hay clave
+ * o internet) lo convierte en líneas con los nombres reales del inventario. Tú las revisas y recién entonces se agregan.
+ */
 export default function Pedido() {
   const db = useSQLiteContext();
-  const { proyecto, area: areaInicial } = useLocalSearchParams<{ proyecto: string; area?: string }>();
-  const proyectoId = Number(proyecto);
-  const [inventario, setInventario] = useState<Producto[]>([]);
+  const { proyecto, area: areaInicial, auto } = useLocalSearchParams<{ proyecto?: string; area?: string; auto?: string }>();
+  const [proyectoId, setProyectoId] = useState<number | null>(proyecto ? Number(proyecto) : null);
+  const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+  const [inventario, setInventario] = useState<Producto[] | null>(null);
   const [conClave, setConClave] = useState(false);
   const [texto, setTexto] = useState('');
   const [area, setArea] = useState(areaInicial ?? '');
   const [revision, setRevision] = useState<Revision[] | null>(null);
   const [notas, setNotas] = useState<string | null>(null);
+  const [escuchando, setEscuchando] = useState(false);
+  const [trabajando, setTrabajando] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  const base = useRef(''); // lo escrito antes de empezar a hablar: la voz se agrega a continuación
+  const ultimo = useRef(''); // último texto reconocido, ya con números en dígitos
+  const idioma = useRef('es-DO');
+  const deVoz = useRef(false); // esta sesión la inició el botón de voz: al terminar se entiende sola
+  const arranco = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
       listarCatalogo(db).then(setInventario);
       leerClave().then((c) => setConClave(!!c));
+      // proyectos donde todavía se puede levantar (sin factura), el más urgente primero
+      proyectosConResumen(db, 'activos').then((r) => {
+        const libres = r.filter((x) => !x.resumen.factura).map((x) => x.proyecto);
+        setProyectos(libres);
+        setProyectoId((actual) => actual ?? libres[0]?.id ?? null);
+      });
     }, [db])
   );
 
-  const porId = new Map(inventario.map((p) => [p.id, p]));
+  const porId = new Map((inventario ?? []).map((p) => [p.id, p]));
 
   function armarRevision(r: ResultadoPedido) {
     if (r.lineas.length === 0) return Alert.alert('No entendí ningún equipo', 'Prueba dictando de nuevo, por ejemplo: "3 cámaras turret y un gabinete 4u pequeño".');
@@ -63,12 +100,90 @@ export default function Pedido() {
     );
   }
 
-  async function entender(conClaude: boolean) {
-    if (!texto.trim()) return Alert.alert('Falta el pedido', 'Escribe o dicta lo que necesitas. Con el micrófono del teclado del iPhone puedes hablar.');
-    if (inventario.length === 0) return Alert.alert('El inventario está vacío', 'Primero agrega tus equipos y servicios en Más, Inventario.');
+  /** Entiende lo dictado. Si Claude falla (sin internet, sin saldo...), cae al entendedor local y lo avisa. */
+  async function entender(dictado: string, conClaude = conClave) {
+    const limpio = numerosEnDigitos(dictado);
+    if (!limpio.trim()) return Alert.alert('Falta el pedido', 'Toca el micrófono y habla, o escribe lo que necesitas.');
+    if (!inventario || inventario.length === 0) return Alert.alert('El inventario está vacío', 'Primero agrega tus equipos y servicios en el menú, Inventario.');
     const articulos = inventario.map(aArticulo);
-    armarRevision(conClaude ? await entenderConClaude(texto, articulos, area.trim() || null) : entenderLocal(texto, articulos));
+    setAviso(null);
+    setTrabajando(true);
+    try {
+      if (!conClaude) return armarRevision(entenderLocal(limpio, articulos));
+      try {
+        armarRevision(await entenderConClaude(limpio, articulos, area.trim() || null));
+      } catch (e) {
+        armarRevision(entenderLocal(limpio, articulos));
+        setAviso(`No pude usar Claude: ${mensajeError(e)} Entendí el pedido sin él; revísalo con más cuidado.`);
+      }
+    } finally {
+      setTrabajando(false);
+    }
   }
+
+  // ---------- voz ----------
+
+  const empezar = useCallback((inv: Producto[], previo: string) => {
+    ExpoSpeechRecognitionModule.requestPermissionsAsync().then((p) => {
+      if (!p.granted) {
+        Alert.alert('Falta el permiso', 'Activa el micrófono y el reconocimiento de voz para Tekhnia en Ajustes del iPhone, o escribe el pedido.');
+        return;
+      }
+      base.current = previo.trim() ? `${previo.trim()} ` : '';
+      ultimo.current = previo;
+      deVoz.current = true;
+      ExpoSpeechRecognitionModule.start({
+        lang: idioma.current,
+        interimResults: true,
+        continuous: true,
+        addsPunctuation: true,
+        contextualStrings: palabrasClave(inv),
+      });
+    });
+  }, []);
+
+  // al entrar con el botón redondo, empieza a escuchar apenas está listo el inventario
+  useEffect(() => {
+    if (auto !== '1' || inventario === null || arranco.current) return;
+    arranco.current = true;
+    empezar(inventario, '');
+  }, [auto, inventario, empezar]);
+
+  // al salir de la pantalla se corta el micrófono
+  useEffect(() => () => ExpoSpeechRecognitionModule.abort(), []);
+
+  useSpeechRecognitionEvent('start', () => {
+    setEscuchando(true);
+    setAviso(null);
+  });
+  useSpeechRecognitionEvent('result', (e) => {
+    ultimo.current = numerosEnDigitos(`${base.current}${e.results[0]?.transcript ?? ''}`);
+    setTexto(ultimo.current);
+  });
+  useSpeechRecognitionEvent('end', () => {
+    setEscuchando(false);
+    if (!deVoz.current) return;
+    deVoz.current = false;
+    if (ultimo.current.trim()) intentar(() => entender(ultimo.current));
+  });
+  useSpeechRecognitionEvent('error', (e) => {
+    deVoz.current = false;
+    if (e.error === 'aborted') return;
+    if (e.error === 'language-not-supported' && idioma.current === 'es-DO') {
+      idioma.current = 'es-US'; // el español dominicano no está disponible en este iPhone: se usa el de EE. UU.
+      empezar(inventario ?? [], base.current);
+      return;
+    }
+    setAviso(
+      e.error === 'no-speech'
+        ? 'No te escuché. Toca el micrófono e inténtalo de nuevo.'
+        : e.error === 'not-allowed'
+          ? 'Activa el micrófono y el reconocimiento de voz para Tekhnia en Ajustes del iPhone.'
+          : `No se pudo usar la voz: ${e.message}`
+    );
+  });
+
+  // ---------- revisión ----------
 
   const cambiar = (clave: number, cambio: Partial<Revision>) => setRevision((rs) => rs && rs.map((r) => (r.clave === clave ? { ...r, ...cambio } : r)));
   const quitar = (clave: number) => setRevision((rs) => rs && rs.filter((r) => r.clave !== clave));
@@ -82,6 +197,7 @@ export default function Pedido() {
   const sinResolver = (revision ?? []).length - listas.length;
 
   async function agregar() {
+    if (proyectoId === null) return Alert.alert('Elige el proyecto', 'Toca el proyecto al que quieres agregar estos equipos.');
     if (listas.length === 0) return Alert.alert('Nada que agregar', 'Elige un artículo para cada línea, o márcala "Agregar a mano".');
     const op = await obtenerOpciones(db, proyectoId);
     for (const r of listas) {
@@ -93,29 +209,57 @@ export default function Pedido() {
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Dictar pedido' }} />
 
       <Tarjeta>
-        <Etiqueta>Dicta lo que necesitas</Etiqueta>
+        <Etiqueta>Proyecto</Etiqueta>
+        {proyectos.length === 0 ? (
+          <Link href="/proyecto/nuevo" style={estilos.enlace}>
+            No hay proyectos en curso sin factura. Crea uno.
+          </Link>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={estilos.fila} keyboardShouldPersistTaps="handled">
+            {proyectos.map((p) => (
+              <Chip key={p.id} borde texto={p.nombre.length > 26 ? `${p.nombre.slice(0, 25)}…` : p.nombre} activo={proyectoId === p.id} onPress={() => setProyectoId(p.id)} />
+            ))}
+          </ScrollView>
+        )}
+      </Tarjeta>
+
+      <Tarjeta style={{ alignItems: 'center', gap: 10 }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={escuchando ? 'Dejar de escuchar' : 'Empezar a dictar'}
+          style={[estilos.mic, escuchando && estilos.micActivo]}
+          onPress={() => (escuchando ? ExpoSpeechRecognitionModule.stop() : empezar(inventario ?? [], texto))}>
+          <IconoMic escala={1.5} />
+        </Pressable>
+        <Text style={estilos.estadoMic}>{escuchando ? 'Te escucho… toca para terminar' : trabajando ? 'Entendiendo tu pedido…' : 'Toca y habla'}</Text>
+        {trabajando ? <ActivityIndicator color={color.primario} /> : null}
+        {aviso ? <Text style={estilos.aviso}>{aviso}</Text> : null}
+      </Tarjeta>
+
+      <Tarjeta>
+        <Etiqueta>Lo que dictaste (puedes corregirlo)</Etiqueta>
         <Campo
-          placeholder='Toca el micrófono del teclado y habla. Ej: "en la entrada 3 cámaras turret, un gabinete 4u pequeño y 3 puntos de instalación"'
+          placeholder='Ej: "en la entrada 3 cámaras turret, un gabinete 4u pequeño y 3 puntos de instalación"'
           value={texto}
           onChangeText={setTexto}
+          onEndEditing={() => setTexto((t) => numerosEnDigitos(t))}
           multilinea
-          autoFocus
-          style={{ minHeight: 110 }}
+          style={{ minHeight: 90 }}
         />
         <Etiqueta>Área (si no la mencionas al dictar)</Etiqueta>
         <Campo placeholder="Ej. Entrada, Bodega" value={area} onChangeText={setArea} />
         {conClave ? (
           <>
-            <Boton texto="Entender con Claude" onPress={() => entender(true)} />
-            <Boton tipo="secundario" texto="Entender sin Claude (gratis, sin internet)" onPress={() => entender(false)} />
+            <Boton texto="Entender con Claude" onPress={() => entender(texto, true)} />
+            <Boton tipo="secundario" texto="Entender sin Claude (gratis, sin internet)" onPress={() => entender(texto, false)} />
           </>
         ) : (
           <>
-            <Boton texto="Entender pedido" onPress={() => entender(false)} />
+            <Boton texto="Entender pedido" onPress={() => entender(texto, false)} />
             <Link href="/asistente" style={estilos.enlace}>
               Con Claude se entienden frases más complejas. Agrega tu clave de API.
             </Link>
@@ -142,7 +286,9 @@ export default function Pedido() {
                   {r.manual ? `${capitalizar(r.texto)} (a mano, sin precio)` : `No encontré: «${r.texto}»`}
                 </Text>
               )}
-              <Text style={estilos.detalle}>Dictado: «{r.texto}» · Área: {r.area}</Text>
+              <Text style={estilos.detalle}>
+                Dictado: «{r.texto}» · Área: {r.area}
+              </Text>
 
               <View style={estilos.fila}>
                 <Pressable accessibilityRole="button" accessibilityLabel="Quitar una unidad" style={estilos.paso} onPress={() => cambiar(r.clave, { cantidad: Math.max(1, r.cantidad - 1) })}>
@@ -185,9 +331,12 @@ const estilos = StyleSheet.create({
   nombre: { fontSize: 16, fontWeight: '600', color: color.texto },
   detalle: { fontSize: 13, color: color.suave },
   nota: { fontSize: 14, color: color.alerta },
-  aviso: { fontSize: 13, color: color.alerta, fontWeight: '600' },
+  aviso: { fontSize: 13, color: color.alerta, fontWeight: '600', textAlign: 'center' },
   fila: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   paso: { width: 44, height: 44, borderRadius: 22, backgroundColor: color.fondo, alignItems: 'center', justifyContent: 'center' },
   pasoTexto: { fontSize: 22, color: color.texto },
   cantidad: { minWidth: 32, textAlign: 'center', fontSize: 18, fontWeight: '700', color: color.texto },
+  mic: { width: 96, height: 96, borderRadius: 48, backgroundColor: color.primario, alignItems: 'center', justifyContent: 'center' },
+  micActivo: { backgroundColor: '#c0262d' },
+  estadoMic: { fontSize: 15, fontWeight: '600', color: color.texto },
 });

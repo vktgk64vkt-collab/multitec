@@ -3,9 +3,11 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text } from 'react-native';
 
-import { listarClientes, type Cliente } from '@/db/clientes';
+import { Alert } from '@/alert';
+import { FilaDeslizable } from '@/deslizar';
+import { eliminarCliente, listarClientes, type Cliente } from '@/db/clientes';
 import { color, tarjeta } from '@/tema';
-import { Campo } from '@/ui';
+import { Campo, PROPS_TECLADO } from '@/ui';
 
 /** Lista de clientes (se abre desde el menú de arriba a la derecha). */
 export default function ListaClientes() {
@@ -19,8 +21,22 @@ export default function ListaClientes() {
     }, [db, busqueda])
   );
 
+  function confirmarEliminar(c: Cliente) {
+    Alert.alert('Eliminar cliente', `¿Eliminar a ${c.nombre}? Esta acción no se puede deshacer.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: async () => {
+          if (await eliminarCliente(db, c.id)) listarClientes(db, busqueda).then(setClientes);
+          else Alert.alert('Tiene proyectos', 'Este cliente tiene proyectos. Elimina o reasigna sus proyectos antes de borrarlo: así no se pierden cotizaciones ni facturas.');
+        },
+      },
+    ]);
+  }
+
   return (
-    <FlatList
+    <FlatList {...PROPS_TECLADO}
       data={clientes}
       keyExtractor={(c) => String(c.id)}
       contentInsetAdjustmentBehavior="automatic"
@@ -45,6 +61,7 @@ export default function ListaClientes() {
       }
       ListEmptyComponent={<Text style={estilos.vacio}>{busqueda ? 'Sin resultados.' : 'Aún no hay clientes. Toca "+ Nuevo" para agregar el primero.'}</Text>}
       renderItem={({ item }) => (
+        <FilaDeslizable onAccion={() => confirmarEliminar(item)}>
         <Link href={{ pathname: '/clientes/[id]', params: { id: item.id } }} asChild>
           <Pressable accessibilityRole="button" style={[tarjeta, estilos.fila]}>
             <Text style={estilos.nombre}>{item.nombre}</Text>
@@ -52,6 +69,7 @@ export default function ListaClientes() {
             {item.telefono ? <Text style={estilos.detalle}>{item.telefono}</Text> : null}
           </Pressable>
         </Link>
+        </FilaDeslizable>
       )}
     />
   );

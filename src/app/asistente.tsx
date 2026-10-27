@@ -6,7 +6,7 @@ import { Alert } from '@/alert';
 import { borrarClave, clavePartida, guardarClave, guardarModelo, leerClave, leerModelo, probarConexion } from '@/claude';
 import { MODELO_BASE, MODELOS_CLAUDE } from '@/pedido';
 import { color } from '@/tema';
-import { Boton, Campo, Chip, Etiqueta, Tarjeta } from '@/ui';
+import { Boton, Campo, Chip, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 /** Asistente Claude: la clave de API del usuario y el modelo con el que se entienden los pedidos dictados. */
 export default function Asistente() {
@@ -51,7 +51,7 @@ export default function Asistente() {
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Asistente Claude' }} />
       <Text style={estilos.texto}>
         Dicta lo que necesitas en el levantamiento y Claude lo convierte en líneas con los nombres reales de tu inventario. Funciona con tu propia

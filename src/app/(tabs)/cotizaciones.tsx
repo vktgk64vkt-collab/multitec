@@ -13,10 +13,14 @@ import { color } from '@/tema';
 export default function Cotizaciones() {
   const db = useSQLiteContext();
   const [filas, setFilas] = useState<ProyectoConResumen[]>([]);
+  const [cargado, setCargado] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      proyectosConResumen(db, 'activos').then((r) => setFilas(r.filter((x) => !x.resumen.factura)));
+      proyectosConResumen(db, 'activos').then((r) => {
+        setFilas(r.filter((x) => !x.resumen.factura));
+        setCargado(true);
+      });
     }, [db])
   );
 
@@ -26,7 +30,7 @@ export default function Cotizaciones() {
         data={filas}
         keyExtractor={(f) => String(f.proyecto.id)}
         contentContainerStyle={estilos.lista}
-        ListEmptyComponent={<Text style={estilos.vacio}>No hay proyectos por cotizar. Crea un proyecto desde Inicio.</Text>}
+        ListEmptyComponent={cargado ? <Text style={estilos.vacio}>No hay proyectos por cotizar. Crea un proyecto desde Inicio.</Text> : undefined}
         renderItem={({ item: { proyecto, resumen } }) => (
           <FilaProyecto
             proyecto={proyecto}

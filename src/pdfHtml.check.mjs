@@ -13,7 +13,7 @@ for (const f of ['pdfHtml', 'dinero', 'marca']) {
   const fuente = readFileSync(new URL(`./${f}.ts`, import.meta.url), 'utf8');
   writeFileSync(join(tmp, `${f}.js`), ts.transpileModule(fuente, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText);
 }
-const { htmlDocumento } = require(join(tmp, 'pdfHtml.js'));
+const { htmlDocumento, nombreArchivoPdf } = require(join(tmp, 'pdfHtml.js'));
 const { paleta, esColorHex, COLOR_BASE } = require(join(tmp, 'marca.js'));
 
 const lineas = [
@@ -82,4 +82,15 @@ const viejas = htmlDocumento({ ...base, areas: ['Entrada', 'Bodega'], lineas: [{
 assert.ok(!viejas.includes('Entrada') && !viejas.includes('Bodega'), 'el área no debe aparecer');
 assert.equal((viejas.match(/Cámara IP/g) ?? []).length, 1);
 assert.ok(viejas.includes('<td class="n">6</td>'), '2 + 3 + 1 = 6 en una sola fila');
+// --- el PDF se guarda con el nombre del documento
+const datosNombre = { ...base, cliente: 'Constructora Delta, S.R.L.', proyecto: 'Videovigilancia oficinas y bodega' };
+assert.equal(nombreArchivoPdf({ ...datosNombre, titulo: 'Cotización #12' }), 'Cotización 12 - Constructora Delta, S.R.L. - Videovigilancia oficinas y bodega.pdf');
+assert.equal(nombreArchivoPdf({ ...datosNombre, titulo: 'Propuesta #12' }), 'Propuesta 12 - Constructora Delta, S.R.L. - Videovigilancia oficinas y bodega.pdf');
+assert.equal(nombreArchivoPdf({ ...datosNombre, titulo: 'Factura', ncf: 'B0100000045' }), 'Factura B0100000045 - Constructora Delta, S.R.L. - Videovigilancia oficinas y bodega.pdf');
+assert.equal(nombreArchivoPdf({ ...datosNombre, titulo: 'Factura (ANULADA)', ncf: 'B0100000045', proyecto: 'X' }), 'Factura B0100000045 (ANULADA) - Constructora Delta, S.R.L. - X.pdf');
+assert.equal(nombreArchivoPdf({ ...base, titulo: 'Cotización #3', cliente: 'A/B: "Sur" <1>', proyecto: 'Casa\\Norte? *' }), 'Cotización 3 - A B Sur 1 - Casa Norte.pdf'); // sin / \ : * ? " < > |
+assert.equal(nombreArchivoPdf({ ...base, titulo: 'Cotización #3', cliente: '', proyecto: 'Solo proyecto' }), 'Cotización 3 - Solo proyecto.pdf');
+assert.ok(nombreArchivoPdf({ ...base, titulo: 'Cotización #3', cliente: 'x'.repeat(300) }).length <= 124, 'largo acotado');
+assert.ok(!/[\\/:*?"<>|]/.test(nombreArchivoPdf({ ...base, cliente: 'a/b\\c:d' })));
+
 console.log('pdfHtml ok');

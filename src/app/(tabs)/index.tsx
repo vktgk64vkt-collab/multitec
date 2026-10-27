@@ -8,8 +8,9 @@ import { obtenerNegocio, type Negocio } from '@/db/negocio';
 import { listarProyectos, type Proyecto } from '@/db/proyectos';
 import { uriFoto } from '@/fotos';
 import { paleta } from '@/marca';
+import { BotonDictado } from '@/dictado';
 import { BotonMenu } from '@/menu';
-import { FilaProyecto } from '@/proyectoUi';
+import { confirmarEliminarProyecto, FilaProyecto } from '@/proyectoUi';
 import { color } from '@/tema';
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
@@ -19,11 +20,15 @@ export default function Inicio() {
   const db = useSQLiteContext();
   const { top } = useSafeAreaInsets();
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+  const [cargado, setCargado] = useState(false);
   const [empresa, setEmpresa] = useState<Negocio | null | undefined>(undefined);
 
   useFocusEffect(
     useCallback(() => {
-      listarProyectos(db, 'activos').then(setProyectos);
+      listarProyectos(db, 'activos').then((p) => {
+        setProyectos(p);
+        setCargado(true);
+      });
       obtenerNegocio(db).then(setEmpresa);
     }, [db])
   );
@@ -32,7 +37,7 @@ export default function Inicio() {
   const nombre = empresa?.nombre?.trim();
   const configurada = !!(nombre || empresa?.logo_uri);
   const urgentes = proyectos.filter((x) => x.prioridad === 2).length;
-  const resumen = proyectos.length === 0 ? 'Sin proyectos en curso' : `${plural(proyectos.length, 'proyecto', 'proyectos')} en curso${urgentes ? ` · ${urgentes} de prioridad alta` : ''}`;
+  const resumen = !cargado ? ' ' : proyectos.length === 0 ? 'Sin proyectos en curso' : `${plural(proyectos.length, 'proyecto', 'proyectos')} en curso${urgentes ? ` · ${urgentes} de prioridad alta` : ''}`;
 
   return (
     <View style={estilos.pantalla}>
@@ -78,11 +83,18 @@ export default function Inicio() {
             </Link>
           </View>
         }
-        ListEmptyComponent={<Text style={estilos.vacio}>No hay proyectos en curso. Toca &quot;+ Nuevo proyecto&quot; para empezar uno.</Text>}
-        renderItem={({ item }) => <FilaProyecto proyecto={item} href={{ pathname: '/proyecto/[id]', params: { id: item.id } }} />}
+        ListEmptyComponent={cargado ? <Text style={estilos.vacio}>No hay proyectos en curso. Toca &quot;+ Nuevo proyecto&quot; para empezar uno.</Text> : undefined}
+        renderItem={({ item }) => (
+          <FilaProyecto
+            proyecto={item}
+            href={{ pathname: '/proyecto/[id]', params: { id: item.id } }}
+            onEliminar={() => confirmarEliminarProyecto(db, item, () => listarProyectos(db, 'activos').then(setProyectos))}
+          />
+        )}
       />
 
       <BotonMenu />
+      <BotonDictado sobreBarra />
     </View>
   );
 }

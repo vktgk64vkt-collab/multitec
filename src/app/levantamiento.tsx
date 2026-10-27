@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import { Link, router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Link, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -11,8 +11,10 @@ import { listarLineas, obtenerOpciones } from '@/db/cotizacion';
 import { crearPartida, eliminarPartida, listarPartidas, type Partida } from '@/db/levantamiento';
 import { formatear, moneda, precioParaProyecto, totales } from '@/dinero';
 import { guardarFoto, uriFoto } from '@/fotos';
+import { FilaDeslizable } from '@/deslizar';
+import { BotonDictado } from '@/dictado';
 import { color } from '@/tema';
-import { Boton, Campo, Etiqueta, Tarjeta } from '@/ui';
+import { Boton, Campo, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const MAX_SUGERENCIAS = 12;
 
@@ -131,7 +133,8 @@ export default function Levantamiento() {
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <View style={{ flex: 1 }}>
+    <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Levantamiento' }} />
 
       <Link href={{ pathname: '/cotizacion', params: { proyecto: proyectoId } }} asChild>
@@ -140,12 +143,6 @@ export default function Levantamiento() {
           <Text style={estilos.resumenMonto}>{moneda(total)}</Text>
         </Pressable>
       </Link>
-
-      <Boton
-        tipo="secundario"
-        texto="Dictar pedido (voz)"
-        onPress={() => router.push({ pathname: '/pedido', params: { proyecto: proyectoId, area } })}
-      />
 
       <Tarjeta>
         <Etiqueta>Dónde estás</Etiqueta>
@@ -201,12 +198,8 @@ export default function Levantamiento() {
             {g.manual ? <Text style={estilos.aviso}>Sin precio</Text> : null}
           </View>
           {g.partidas.map((p) => (
-            <Pressable
-              key={p.id}
-              style={estilos.area}
-              accessibilityRole="button"
-              accessibilityHint="Mantén presionado para eliminar"
-              onLongPress={() => confirmarEliminar(p)}>
+            <FilaDeslizable key={p.id} onAccion={() => confirmarEliminar(p)}>
+            <View style={estilos.area}>
               <View style={{ flex: 1 }}>
                 <Text style={estilos.detalle}>
                   {p.area} · {p.cantidad}
@@ -214,12 +207,15 @@ export default function Levantamiento() {
                 {p.notas ? <Text style={estilos.detalle}>{p.notas}</Text> : null}
               </View>
               {p.foto_uri ? <Image source={{ uri: uriFoto(p.foto_uri) }} style={estilos.miniatura} /> : null}
-            </Pressable>
+            </View>
+            </FilaDeslizable>
           ))}
         </Tarjeta>
       ))}
-      {partidas.length > 0 && <Text style={estilos.pista}>Mantén presionada un área para eliminarla. Los equipos repetidos se suman en una sola tarjeta.</Text>}
+      {partidas.length > 0 && <Text style={estilos.pista}>Desliza un área hacia la izquierda para eliminarla. Los equipos repetidos se suman en una sola tarjeta.</Text>}
     </ScrollView>
+    <BotonDictado proyectoId={proyectoId} />
+    </View>
   );
 }
 
@@ -234,7 +230,7 @@ const estilos = StyleSheet.create({
   enlace: { color: color.primario, fontSize: 15 },
   foto: { width: '100%', height: 180, borderRadius: 12 },
   encabezadoGrupo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  area: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44, paddingVertical: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.borde },
+  area: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44, paddingVertical: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.borde, backgroundColor: color.tarjeta },
   nombre: { fontSize: 16, fontWeight: '600', color: color.texto },
   precio: { fontSize: 16, fontWeight: '700', color: color.texto },
   detalle: { fontSize: 14, color: color.suave },

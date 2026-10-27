@@ -1,13 +1,14 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { ScrollView, StyleSheet, Text } from 'react-native';
 
 import { Alert } from '@/alert';
 import { crearEntrada, eliminarEntrada, listarEntradas, type Entrada } from '@/db/bitacora';
 import { formatearFecha } from '@/dinero';
+import { FilaDeslizable } from '@/deslizar';
 import { color } from '@/tema';
-import { Boton, Campo, Tarjeta } from '@/ui';
+import { Boton, Campo, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 export default function Bitacora() {
   const db = useSQLiteContext();
@@ -42,7 +43,7 @@ export default function Bitacora() {
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Bitácora' }} />
       <Tarjeta>
         <Campo
@@ -56,14 +57,14 @@ export default function Bitacora() {
 
       {entradas.length === 0 && <Text style={estilos.vacio}>Aún no hay entradas. Anota aquí cada visita y avance.</Text>}
       {entradas.map((e) => (
-        <Pressable key={e.id} onLongPress={() => confirmarEliminar(e)}>
+        <FilaDeslizable key={e.id} onAccion={() => confirmarEliminar(e)}>
           <Tarjeta style={{ gap: 2 }}>
             <Text style={estilos.fecha}>{formatearFecha(e.creado_en, true)}</Text>
             <Text style={estilos.nota}>{e.texto}</Text>
           </Tarjeta>
-        </Pressable>
+        </FilaDeslizable>
       ))}
-      {entradas.length > 0 && <Text style={estilos.pista}>Mantén presionada una entrada para eliminarla.</Text>}
+      {entradas.length > 0 && <Text style={estilos.pista}>Desliza una entrada hacia la izquierda para eliminarla.</Text>}
     </ScrollView>
   );
 }

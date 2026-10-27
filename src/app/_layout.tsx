@@ -15,6 +15,7 @@ export default function RootLayout() {
         <Stack.Screen name="cotizacion" />
         <Stack.Screen name="propuesta" />
         <Stack.Screen name="pedido" options={{ title: 'Dictar pedido' }} />
+        <Stack.Screen name="vista-previa" options={{ title: 'Vista previa' }} />
         <Stack.Screen name="asistente" />
         <Stack.Screen name="bitacora" />
         <Stack.Screen name="factura" />

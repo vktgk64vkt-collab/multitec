@@ -7,7 +7,7 @@ import { Alert } from '@/alert';
 import { listarClientes, type Cliente } from '@/db/clientes';
 import { crearProyecto, PRIORIDAD_MEDIA, PRIORIDADES, TIPOS } from '@/db/proyectos';
 import { color } from '@/tema';
-import { Boton, Campo, Chip, Etiqueta, Tarjeta } from '@/ui';
+import { Boton, Campo, Chip, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 export default function NuevoProyecto() {
   const db = useSQLiteContext();
@@ -27,12 +27,12 @@ export default function NuevoProyecto() {
     if (clienteId === null || !nombre.trim()) {
       return Alert.alert('Faltan datos', 'Elige un cliente y escribe el nombre del proyecto.');
     }
-    await crearProyecto(db, clienteId, nombre.trim(), tipo, prioridad);
-    router.back();
+    const id = await crearProyecto(db, clienteId, nombre.trim(), tipo, prioridad);
+    router.replace({ pathname: '/proyecto/[id]', params: { id } }); // directo al proyecto: ahí está el siguiente paso
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Tarjeta>
         <Campo placeholder="Nombre del proyecto" value={nombre} onChangeText={setNombre} />
       </Tarjeta>

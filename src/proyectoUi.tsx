@@ -1,7 +1,10 @@
 import { Link, type Href } from 'expo-router';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { PRIORIDADES, type Proyecto } from '@/db/proyectos';
+import { Alert } from '@/alert';
+import { FilaDeslizable } from '@/deslizar';
+import { eliminarProyecto, PRIORIDADES, type Proyecto } from '@/db/proyectos';
 import { color, tarjeta } from '@/tema';
 
 /** Solo se destacan las prioridades que se salen de lo normal: la media no lleva insignia. */
@@ -16,8 +19,8 @@ export function InsigniaPrioridad({ prioridad }: { prioridad: number }) {
 }
 
 /** Tarjeta de un proyecto para las listas: nombre, cliente, prioridad, estado y una línea propia de cada pantalla. */
-export function FilaProyecto({ proyecto, detalle, href }: { proyecto: Proyecto; detalle?: string; href: Href }) {
-  return (
+export function FilaProyecto({ proyecto, detalle, href, onEliminar }: { proyecto: Proyecto; detalle?: string; href: Href; onEliminar?: () => unknown }) {
+  const fila = (
     <Link href={href} asChild>
       <Pressable accessibilityRole="button" accessibilityLabel={`${proyecto.nombre}, ${proyecto.cliente}`} style={[tarjeta, estilos.fila]}>
         <View style={{ flex: 1, gap: 2 }}>
@@ -34,6 +37,22 @@ export function FilaProyecto({ proyecto, detalle, href }: { proyecto: Proyecto; 
       </Pressable>
     </Link>
   );
+  return onEliminar ? <FilaDeslizable onAccion={onEliminar}>{fila}</FilaDeslizable> : fila;
+}
+
+/** Pide confirmación y borra el proyecto; uno con factura no se borra (se anula la factura). `despues` recarga la lista. */
+export function confirmarEliminarProyecto(db: SQLiteDatabase, p: Proyecto, despues: () => unknown) {
+  Alert.alert('Eliminar proyecto', `¿Eliminar ${p.nombre}? Se borran su levantamiento, cotización y bitácora. No se puede deshacer.`, [
+    { text: 'Cancelar', style: 'cancel' },
+    {
+      text: 'Eliminar',
+      style: 'destructive',
+      onPress: async () => {
+        if (await eliminarProyecto(db, p.id)) despues();
+        else Alert.alert('Tiene factura', 'Un proyecto con factura no se borra. Anula la factura si fue un error; el NCF queda registrado.');
+      },
+    },
+  ]);
 }
 
 const estilos = StyleSheet.create({

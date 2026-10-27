@@ -7,6 +7,16 @@ import { color, tarjeta } from '@/tema';
 // Zona táctil mínima recomendada por Apple y por las guías de UX.
 export const TOQUE_MIN = 44;
 
+/**
+ * Para listas y formularios con campos de texto: al abrir el teclado el contenido sube lo necesario para que el campo
+ * que estás escribiendo nunca quede tapado, y arrastrar hacia abajo cierra el teclado.
+ */
+export const PROPS_TECLADO = {
+  automaticallyAdjustKeyboardInsets: true,
+  keyboardDismissMode: 'interactive',
+  keyboardShouldPersistTaps: 'handled',
+} as const;
+
 export function Tarjeta({ children, style }: { children: ReactNode; style?: ViewStyle }) {
   return <View style={[tarjeta, { gap: 8 }, style]}>{children}</View>;
 }

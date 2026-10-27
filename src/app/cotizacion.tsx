@@ -22,9 +22,12 @@ import {
 import { listarAreas } from '@/db/levantamiento';
 import { guardarCondiciones, obtenerCondiciones, obtenerProyecto } from '@/db/proyectos';
 import { aCentavos, fechaEn, formatear, importe, ITBIS_PCT, moneda, precioParaProyecto, totales } from '@/dinero';
-import { compartirPdf, negocioParaPdf } from '@/pdf';
+import { negocioParaPdf, previsualizar } from '@/pdf';
+import { FilaDeslizable } from '@/deslizar';
+import { BotonDictado } from '@/dictado';
+import { detalleArticulo } from '@/nomenclatura';
 import { color } from '@/tema';
-import { Boton, Campo, Chip, Etiqueta, Tarjeta } from '@/ui';
+import { Boton, Campo, Chip, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const SECCIONES: { tipo: TipoItem; titulo: string }[] = [
   { tipo: 'equipo', titulo: 'Equipos' },
@@ -126,7 +129,7 @@ export default function Cotizacion() {
       tipo: p.tipo,
       costo_cts: p.costo_cts,
       item_id: p.id,
-      detalle: p.descripcion,
+      detalle: detalleArticulo(p),
     });
     setBusqueda('');
     cargar();
@@ -146,7 +149,7 @@ export default function Cotizacion() {
   async function pdf() {
     const p = await obtenerProyecto(db, proyectoId);
     if (!p || lineas.length === 0) return Alert.alert('Nada que compartir', 'Agrega líneas a la cotización primero.');
-    const ok = await compartirPdf({
+    previsualizar({
       titulo: `Cotización #${p.id}`,
       fecha: fechaEn(0),
       cliente: p.cliente,
@@ -158,7 +161,6 @@ export default function Cotizacion() {
       preciosConItbis: conItbis,
       ...t,
     });
-    if (!ok) Alert.alert('No disponible', 'El PDF solo funciona en el iPhone.');
   }
 
   /** Cambia nivel y/o modo de ITBIS (con impuesto `pctNuevo`) y reprecia las líneas del inventario, con confirmación. */
@@ -201,7 +203,8 @@ export default function Cotizacion() {
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <View style={{ flex: 1 }}>
+    <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Cotización' }} />
 
       {pendientes > 0 && (
@@ -230,7 +233,7 @@ export default function Cotizacion() {
               <Text style={estilos.detalle}>{moneda(delTipo.reduce((s, l) => s + importe(l), 0))}</Text>
             </View>
             {delTipo.map((l) => (
-              <Pressable key={l.id} onLongPress={() => confirmarEliminar(l)} accessibilityHint="Mantén presionado para eliminar la línea">
+              <FilaDeslizable key={l.id} onAccion={() => confirmarEliminar(l)}>
                 <Tarjeta>
                   <View style={estilos.dos}>
                     <Text style={estilos.nombre}>{l.descripcion}</Text>
@@ -261,12 +264,12 @@ export default function Cotizacion() {
                     />
                   </View>
                 </Tarjeta>
-              </Pressable>
+              </FilaDeslizable>
             ))}
           </View>
         );
       })}
-      {lineas.length > 0 && <Text style={estilos.pista}>Mantén presionada una línea para eliminarla.</Text>}
+      {lineas.length > 0 && <Text style={estilos.pista}>Desliza una línea hacia la izquierda para eliminarla.</Text>}
 
       <Tarjeta>
         <Etiqueta>Buscar en el inventario (nombre o código)</Etiqueta>
@@ -356,6 +359,8 @@ export default function Cotizacion() {
         <Boton texto="Compartir PDF" onPress={pdf} />
       </Tarjeta>
     </ScrollView>
+    <BotonDictado proyectoId={proyectoId} />
+    </View>
   );
 }
 

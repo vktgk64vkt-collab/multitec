@@ -1,7 +1,7 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
 import { listarCatalogo } from '@/db/catalogo';
@@ -24,9 +24,10 @@ import { obtenerCondiciones } from '@/db/proyectos';
 import { agruparLineas, aCentavos, sinArea, fechaEn, formatear, formatearFecha, importe, moneda, totales } from '@/dinero';
 import { urlWhatsApp } from '@/contacto';
 import { obtenerNegocio } from '@/db/negocio';
-import { compartirPdf, negocioParaPdf } from '@/pdf';
+import { negocioParaPdf, previsualizar } from '@/pdf';
+import { FilaDeslizable } from '@/deslizar';
 import { color } from '@/tema';
-import { Boton, Campo, Chip, Etiqueta, Tarjeta } from '@/ui';
+import { Boton, Campo, Chip, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const PLAZOS = [15, 30, 60];
 
@@ -89,7 +90,7 @@ export default function Factura() {
   }
 
   async function pdf(f: FacturaDB) {
-    const ok = await compartirPdf({
+    previsualizar({
       titulo: f.anulada ? 'Factura (ANULADA)' : 'Factura',
       ncf: f.ncf,
       fecha: formatearFecha(f.creado_en),
@@ -107,7 +108,6 @@ export default function Factura() {
       condiciones: await obtenerCondiciones(db, proyectoId),
       preciosConItbis: (await obtenerOpciones(db, proyectoId)).con_itbis,
     });
-    if (!ok) Alert.alert('No disponible', 'El PDF solo funciona en el iPhone.');
   }
 
   async function whatsapp(f: FacturaDB) {
@@ -176,7 +176,7 @@ export default function Factura() {
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
+    <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Factura' }} />
 
       {!factura ? (
@@ -260,12 +260,14 @@ export default function Factura() {
               <Text style={estilos.seccion}>Pagos</Text>
               {pagos.length === 0 ? <Text style={estilos.detalle}>Aún no hay pagos registrados.</Text> : null}
               {pagos.map((p) => (
-                <Pressable key={p.id} style={estilos.pago} onLongPress={() => quitarPago(factura, p)} accessibilityHint="Mantén presionado para eliminar">
-                  <Text style={estilos.detalle}>{formatearFecha(p.creado_en, true)}</Text>
-                  <Text style={estilos.nombre}>{moneda(p.monto_cts)}</Text>
-                </Pressable>
+                <FilaDeslizable key={p.id} onAccion={() => quitarPago(factura, p)}>
+                  <View style={estilos.pago}>
+                    <Text style={estilos.detalle}>{formatearFecha(p.creado_en, true)}</Text>
+                    <Text style={estilos.nombre}>{moneda(p.monto_cts)}</Text>
+                  </View>
+                </FilaDeslizable>
               ))}
-              {pagos.length > 0 ? <Text style={estilos.pista}>Mantén presionado un pago para eliminarlo.</Text> : null}
+              {pagos.length > 0 ? <Text style={estilos.pista}>Desliza un pago hacia la izquierda para eliminarlo.</Text> : null}
               {saldo > 0 ? (
                 <View style={{ gap: 8 }}>
                   <Campo
@@ -303,7 +305,7 @@ const estilos = StyleSheet.create({
   detalle: { fontSize: 14, color: color.suave },
   aviso: { fontSize: 14, color: color.alerta, fontWeight: '600' },
   pista: { fontSize: 12, color: color.suave },
-  pago: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, minHeight: 44, alignItems: 'center' },
+  pago: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, minHeight: 44, alignItems: 'center', backgroundColor: color.tarjeta },
   linea: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingVertical: 4 },
   total: { fontSize: 22, fontWeight: '700', color: color.texto },
   saldo: { fontSize: 18, fontWeight: '700' },

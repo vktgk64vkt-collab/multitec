@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BotonDictado } from '@/dictado';
 import { BotonMenu } from '@/menu';
 import { color } from '@/tema';
 
@@ -21,6 +22,7 @@ export function PantallaTab({ titulo, subtitulo, children }: { titulo: string; s
       </View>
       {children}
       <BotonMenu />
+      <BotonDictado sobreBarra />
     </View>
   );
 }

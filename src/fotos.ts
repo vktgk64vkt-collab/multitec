@@ -8,7 +8,7 @@ export function guardarFoto(uri: string): string {
   const carpeta = new Directory(Paths.document, 'fotos');
   carpeta.create({ idempotent: true, intermediates: true });
   const nombre = `${Date.now()}.jpg`;
-  new File(uri).copy(new File(carpeta, nombre));
+  new File(uri).copySync(new File(carpeta, nombre));
   return `fotos/${nombre}`;
 }
 

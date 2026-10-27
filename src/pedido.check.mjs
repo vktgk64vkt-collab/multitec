@@ -1,7 +1,7 @@
 // Ejecutar desde la raíz del proyecto: node --experimental-strip-types src/pedido.check.mjs
 import assert from 'node:assert/strict';
 
-import { armarPeticion, entenderLocal, leerRespuesta, normalizar, separarApodos } from './pedido.ts';
+import { armarPeticion, entenderLocal, leerRespuesta, normalizar, numerosEnDigitos, separarApodos } from './pedido.ts';
 
 const inv = [
   { id: 1, nombre: 'Cámara IP Turret 4MPX Hikvision DS-2CD2143G2-I', apodos: ['turret 4', 'camara turret'], tipo: 'equipo' },
@@ -10,6 +10,8 @@ const inv = [
   { id: 4, nombre: 'Gabinete 12U Piso Eaton', apodos: ['gabinete 12u', 'rack grande'], tipo: 'equipo' },
   { id: 5, nombre: 'Instalación CCTV Por punto Estándar', apodos: ['instalacion camara', 'punto de camara'], tipo: 'servicio' },
   { id: 6, nombre: 'Switch PoE Rack 8P Ubiquiti USW-8-POE', apodos: ['switch 8'], tipo: 'equipo' },
+  { id: 7, nombre: 'NVR IP 16CH Hikvision DS-7616NI-Q2', apodos: [], tipo: 'equipo', extras: 'Sin PoE · Soporta 2 discos' },
+  { id: 8, nombre: 'NVR IP 16CH Epcom XV7-16P', apodos: [], tipo: 'equipo', extras: 'Con PoE · Soporta 4 discos' },
 ];
 const resumen = (t) => entenderLocal(t, inv).lineas.map((l) => [l.id, l.cantidad]);
 
@@ -74,5 +76,39 @@ assert.equal(r.lineas[2].confianza, 'media'); // valor desconocido
 assert.equal(r.notas, 'No entendí la última');
 assert.throws(() => leerRespuesta({ otra: 1 }, ids));
 assert.throws(() => leerRespuesta(null, ids));
+
+// --- números dictados en palabras pasan a dígitos
+const n = numerosEnDigitos;
+assert.equal(n('tres cámaras turret'), '3 cámaras turret');
+assert.equal(n('Tres cámaras'), '3 cámaras');
+assert.equal(n('veinticinco metros'), '25 metros');
+assert.equal(n('dieciséis puertos'), '16 puertos');
+assert.equal(n('treinta y cinco cámaras'), '35 cámaras');
+assert.equal(n('ciento veinte'), '120');
+assert.equal(n('mil doscientos cincuenta'), '1250');
+assert.equal(n('dos mil'), '2000');
+assert.equal(n('cien'), '100');
+assert.equal(n('cuatro cinco'), '4 5'); // dos números seguidos no se suman
+assert.equal(n('dos cámaras y tres switch'), '2 cámaras y 3 switch'); // la "y" entre dos cantidades no es parte del número
+assert.equal(n('cuarenta y dos y tres'), '42 y 3');
+assert.equal(n('un gabinete cuatro u'), '1 gabinete 4u'); // la unidad se pega al número
+assert.equal(n('ocho p'), '8p');
+assert.equal(n('cuatro mpx'), '4mpx');
+assert.equal(n('diez m de cable'), '10m de cable');
+assert.equal(n('necesito 3 cámaras'), 'necesito 3 cámaras'); // lo que ya tiene dígitos no cambia
+assert.equal(n('agrega 5 a la entrada'), 'agrega 5 a la entrada'); // "a" es una palabra, no una unidad
+assert.equal(n('4 un gabinete'), '4 1 gabinete');
+assert.equal(n(''), '');
+// el entendedor local entiende cantidades dictadas en palabras, incluida la compuesta con "y"
+assert.deepEqual(resumen('treinta y cinco cámaras turret'), [[1, 35]]);
+assert.deepEqual(resumen('dos cámaras bullet, tres switch ocho'), [[2, 2], [6, 3]]);
+assert.deepEqual(resumen('un gabinete cuatro u pequeño'), [[3, 1]]);
+
+// --- NVR: las características (PoE, discos) y los "canales" ayudan a elegir entre equipos parecidos
+assert.deepEqual(resumen('un nvr de 16 canales con poe'), [[8, 1]]);
+assert.deepEqual(resumen('un nvr de dieciséis canales sin poe'), [[7, 1]]);
+assert.deepEqual(resumen('nvr 16 canales para 4 discos'), [[8, 1]]);
+assert.deepEqual(resumen('2 nvr epcom'), [[8, 2]]);
+assert.ok(armarPeticion('x', inv, 'm', null).system.includes('8 | NVR IP 16CH Epcom XV7-16P |  | equipo | Con PoE · Soporta 4 discos'), 'Claude recibe las características');
 
 console.log('pedido ok');

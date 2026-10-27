@@ -7,8 +7,12 @@ import { Alert } from '@/alert';
 import { resumenProyecto, type ResumenProyecto } from '@/db/resumen';
 import { cambiarEstado, cambiarPrioridad, duplicarProyecto, PRIORIDADES, eliminarProyecto, ESTADOS, obtenerProyecto, type Proyecto } from '@/db/proyectos';
 import { formatearFecha, moneda } from '@/dinero';
+import { siguientePaso, type Paso } from '@/flujo';
+import { BotonDictado } from '@/dictado';
 import { color, tarjeta } from '@/tema';
 import { Boton, Chip, Etiqueta } from '@/ui';
+
+const RUTAS = { levantamiento: '/levantamiento', cotizacion: '/cotizacion', factura: '/factura' } as const;
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
 
@@ -60,6 +64,15 @@ export default function DetalleProyecto() {
     },
   ] as const;
 
+  const paso = resumen
+    ? siguientePaso({ estado: proyecto.estado, partidas: resumen.partidas, lineas: resumen.lineas, total_cts: resumen.total_cts, factura: resumen.factura })
+    : null;
+
+  async function irAlPaso(p: Paso) {
+    if (p.destino === 'cerrar') return elegirEstado('cerrado');
+    router.push({ pathname: RUTAS[p.destino], params: { proyecto: proyecto?.id } });
+  }
+
   async function elegirPrioridad(prioridad: number) {
     await cambiarPrioridad(db, Number(id), prioridad);
     setProyecto((p) => p && { ...p, prioridad });
@@ -92,11 +105,21 @@ export default function DetalleProyecto() {
   }
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor}>
       <Text style={estilos.nombre}>{proyecto.nombre}</Text>
       <Text style={estilos.detalle}>
         {proyecto.cliente} · {proyecto.tipo}
       </Text>
+
+      {paso ? (
+        <View style={[tarjeta, estilos.siguiente]}>
+          <Text style={estilos.siguienteRotulo}>SIGUIENTE PASO</Text>
+          <Text style={estilos.siguienteTitulo}>{paso.titulo}</Text>
+          <Text style={estilos.detalle}>{paso.detalle}</Text>
+          <Boton texto={paso.boton} onPress={() => irAlPaso(paso)} />
+        </View>
+      ) : null}
 
       <View style={estilos.pasos}>
         {pasos.map((p) => (
@@ -130,6 +153,8 @@ export default function DetalleProyecto() {
       <Boton tipo="peligro" texto="Eliminar proyecto" onPress={confirmarEliminar} />
       <Text style={estilos.creado}>Creado: {formatearFecha(proyecto.creado_en)}</Text>
     </ScrollView>
+    <BotonDictado proyectoId={proyecto.id} />
+    </View>
   );
 }
 
@@ -138,6 +163,9 @@ const estilos = StyleSheet.create({
   nombre: { fontSize: 28, fontWeight: '800', color: color.texto },
   detalle: { fontSize: 14, color: color.suave },
   pasos: { gap: 10, marginTop: 4 },
+  siguiente: { gap: 6, borderLeftWidth: 4, borderLeftColor: color.primario },
+  siguienteRotulo: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5, color: color.suave },
+  siguienteTitulo: { fontSize: 20, fontWeight: '800', color: color.texto },
   paso: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   titulo: { fontSize: 17, fontWeight: '600', color: color.texto },
   flecha: { fontSize: 24, color: color.suave },
