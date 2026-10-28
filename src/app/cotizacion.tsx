@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
@@ -24,7 +24,7 @@ import {
 } from '@/db/cotizacion';
 import { aplicarKit, eliminarKit, guardarKit, listarKits, type Kit } from '@/db/kits';
 import { listarAreas } from '@/db/levantamiento';
-import { guardarCondiciones, marcarEnviada, obtenerCondiciones, obtenerProyecto } from '@/db/proyectos';
+import { aprobarCotizacion, guardarCondiciones, marcarEnviada, obtenerCondiciones, obtenerProyecto } from '@/db/proyectos';
 import { aCentavos, fechaEn, formatear, importe, ITBIS_PCT, moneda, precioParaProyecto, totales } from '@/dinero';
 import { negocioParaPdf, previsualizar } from '@/pdf';
 import { FilaDeslizable } from '@/deslizar';
@@ -198,6 +198,12 @@ export default function Cotizacion() {
         },
       },
     ]);
+  }
+
+  /** Aprobada: pasa a proyecto, arranca la ejecución y te lleva a él. */
+  async function aprobar() {
+    if (lineas.length === 0) return Alert.alert('Nada que aprobar', 'Agrega líneas a la cotización primero.');
+    if (await aprobarCotizacion(db, proyectoId)) router.replace({ pathname: '/proyecto/[id]', params: { id: proyectoId } });
   }
 
   async function pdf() {
@@ -440,7 +446,8 @@ export default function Cotizacion() {
           onChangeText={setCondiciones}
           onEndEditing={() => intentar(() => guardarCondiciones(db, proyectoId, condiciones))}
         />
-        <Boton texto="Compartir PDF" onPress={pdf} />
+        <Boton tipo="secundario" texto="Compartir PDF" onPress={pdf} />
+        <Boton texto="Aprobada" onPress={aprobar} />
       </Tarjeta>
     </ScrollView>
     <BotonDictado proyectoId={proyectoId} />

@@ -9,6 +9,7 @@ export interface Cliente {
   direccion: string | null;
   id_fiscal: string | null;
   notas: string | null;
+  ubicacion_url: string | null; // enlace de Google Maps al punto exacto
   creado_en: string;
 }
 
@@ -30,9 +31,9 @@ export function obtenerCliente(db: SQLiteDatabase, id: number) {
 
 export async function crearCliente(db: SQLiteDatabase, d: DatosCliente) {
   const r = await db.runAsync(
-    `INSERT INTO clientes (nombre, empresa, telefono, correo, direccion, id_fiscal, notas)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    d.nombre, d.empresa, d.telefono, d.correo, d.direccion, d.id_fiscal, d.notas
+    `INSERT INTO clientes (nombre, empresa, telefono, correo, direccion, id_fiscal, notas, ubicacion_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    d.nombre, d.empresa, d.telefono, d.correo, d.direccion, d.id_fiscal, d.notas, d.ubicacion_url
   );
   return r.lastInsertRowId;
 }
@@ -42,14 +43,14 @@ export async function buscarOCrearCliente(db: SQLiteDatabase, nombre: string): P
   const limpio = nombre.trim().replace(/\s+/g, ' ');
   const r = await db.getFirstAsync<{ id: number }>('SELECT id FROM clientes WHERE lower(trim(nombre)) = lower(?) ORDER BY id LIMIT 1', limpio);
   if (r) return r.id;
-  return crearCliente(db, { nombre: limpio, empresa: null, telefono: null, correo: null, direccion: null, id_fiscal: null, notas: null });
+  return crearCliente(db, { nombre: limpio, empresa: null, telefono: null, correo: null, direccion: null, id_fiscal: null, notas: null, ubicacion_url: null });
 }
 
 export function actualizarCliente(db: SQLiteDatabase, id: number, d: DatosCliente) {
   return db.runAsync(
     `UPDATE clientes SET nombre = ?, empresa = ?, telefono = ?, correo = ?,
-       direccion = ?, id_fiscal = ?, notas = ? WHERE id = ?`,
-    d.nombre, d.empresa, d.telefono, d.correo, d.direccion, d.id_fiscal, d.notas, id
+       direccion = ?, id_fiscal = ?, notas = ?, ubicacion_url = ? WHERE id = ?`,
+    d.nombre, d.empresa, d.telefono, d.correo, d.direccion, d.id_fiscal, d.notas, d.ubicacion_url, id
   );
 }
 

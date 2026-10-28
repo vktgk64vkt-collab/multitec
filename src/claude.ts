@@ -3,6 +3,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
+import { armarPeticionArticulo, leerArticulo, type BorradorArticulo } from './articuloVoz';
 import { armarPeticion, leerRespuesta, MODELO_BASE, type ArticuloPedido, type ResultadoPedido } from './pedido';
 
 const CLAVE_API = 'anthropic_api_key';
@@ -93,16 +94,26 @@ export async function entenderConClaude(texto: string, inventario: ArticuloPedid
   const clave = await leerClave();
   if (!clave) throw new Error('Falta la clave de API. Agrégala en Más, Asistente Claude.');
   const datos = await llamar(clave, armarPeticion(texto, inventario, await leerModelo(), areaActual));
+  return leerRespuesta(jsonDeRespuesta(datos, 'El pedido es demasiado largo. Dicta menos equipos a la vez.'), new Set(inventario.map((a) => a.id)));
+}
 
-  if (datos.stop_reason === 'refusal') throw new Error('Claude no quiso procesar este pedido. Usa "Entender sin Claude".');
-  if (datos.stop_reason === 'max_tokens') throw new Error('El pedido es demasiado largo. Dicta menos equipos a la vez.');
-  const bloque = (datos.content ?? []).find((b: { type: string }) => b.type === 'text');
+/** El JSON que devolvió Claude, o un Error con un mensaje listo para mostrar. */
+function jsonDeRespuesta(datos: { stop_reason?: string; content?: { type: string; text: string }[] }, mensajeLargo: string): unknown {
+  if (datos.stop_reason === 'refusal') throw new Error('Claude no quiso procesar esto. Escríbelo a mano.');
+  if (datos.stop_reason === 'max_tokens') throw new Error(mensajeLargo);
+  const bloque = (datos.content ?? []).find((b) => b.type === 'text');
   if (!bloque) throw new Error('Claude no devolvió una respuesta. Intenta de nuevo.');
-  let json: unknown;
   try {
-    json = JSON.parse(bloque.text);
+    return JSON.parse(bloque.text);
   } catch {
     throw new Error('No pude leer la respuesta de Claude. Intenta de nuevo.');
   }
-  return leerRespuesta(json, new Set(inventario.map((a) => a.id)));
+}
+
+/** Entiende "agrégame una cámara IP de 4mpx bullet al inventario" con Claude. No guarda nada: devuelve el borrador para confirmarlo. */
+export async function entenderArticuloConClaude(texto: string): Promise<BorradorArticulo> {
+  const clave = await leerClave();
+  if (!clave) throw new Error('Falta la clave de API. Agrégala en Más, Asistente Claude.');
+  const datos = await llamar(clave, armarPeticionArticulo(texto, await leerModelo()));
+  return leerArticulo(jsonDeRespuesta(datos, 'La descripción es demasiado larga. Dicta un solo artículo.'));
 }

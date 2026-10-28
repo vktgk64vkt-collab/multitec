@@ -41,7 +41,7 @@ const E = await import('./ejecucion.ts');
 const F = await import('./factura.ts');
 const K = await import('./kits.ts');
 const R = await import('./resumen.ts');
-const { crearCliente } = await import('./clientes.ts');
+const { crearCliente, actualizarCliente, obtenerCliente } = await import('./clientes.ts');
 const L = await import('./levantamiento.ts');
 const Cat = await import('./catalogo.ts');
 
@@ -50,7 +50,7 @@ await migrarBaseDeDatos(db);
 assert.equal((await db.getFirstAsync('PRAGMA user_version')).user_version, VERSION_ACTUAL);
 await migrarBaseDeDatos(db); // volver a abrir la app no rompe nada
 
-const cliente = await crearCliente(db, { nombre: 'Juan Pérez', empresa: null, telefono: null, correo: null, direccion: null, id_fiscal: null, notas: null });
+const cliente = await crearCliente(db, { nombre: 'Juan Pérez', empresa: null, telefono: null, correo: null, direccion: null, id_fiscal: null, notas: null, ubicacion_url: null });
 const idCliente = typeof cliente === 'number' ? cliente : cliente.lastInsertRowId ?? cliente;
 const sesion = async (nombre) => {
   const id = await P.crearProyecto(db, idCliente, nombre, 'CCTV');
@@ -196,5 +196,33 @@ assert.deepEqual(itemsFactura.map((l) => l.trabajo).sort(), ['Alarma', 'Alarma',
 // duplicar el proyecto conserva los trabajos
 const copia = await P.duplicarProyecto(db, casa);
 assert.deepEqual((await C.listarTrabajos(db, copia)).sort(), ['Alarma', 'CCTV', 'Portón']);
+
+// --- ubicación del cliente: se guarda, y el proyecto la trae para "Cómo llegar"
+const enlaceMapa = 'https://www.google.com/maps/search/?api=1&query=18.486100,-69.931200';
+const datosCliente = { ...(await obtenerCliente(db, idCliente)) };
+await actualizarCliente(db, idCliente, { ...datosCliente, direccion: 'Av. Lincoln 1', ubicacion_url: enlaceMapa });
+assert.equal((await obtenerCliente(db, idCliente)).ubicacion_url, enlaceMapa);
+const conMapa = await P.obtenerProyecto(db, d);
+assert.deepEqual([conMapa.ubicacion_url, conMapa.cliente_direccion], [enlaceMapa, 'Av. Lincoln 1']);
+
+// --- "Aprobada" y deshacerla: solo mientras no haya nada que perder
+const g = await sesion('Deshacer');
+assert.equal(await P.deshacerAprobacion(db, g), false, 'una cotización sin aprobar no tiene qué deshacer');
+assert.equal(await P.aprobarCotizacion(db, g), true);
+assert.equal(await P.deshacerAprobacion(db, g), true);
+const vuelta = await P.obtenerProyecto(db, g);
+assert.deepEqual([vuelta.aprobado_en, vuelta.cot_estado, vuelta.estado, vuelta.ejecucion_iniciada_en], [null, 'enviada', 'cotizado', null]);
+assert.equal((await E.listarEjecucion(db, g)).length, 0, 'la ejecución sin cambios se quita');
+assert.equal((await C.listarLineas(db, g)).length, 2, 'la cotización queda intacta');
+// con un cambio en la ejecución ya no se puede
+await P.aprobarCotizacion(db, g);
+await E.cambiarCantidad(db, (await E.listarEjecucion(db, g))[0].id, 1);
+assert.equal(await P.deshacerAprobacion(db, g), false);
+assert.equal((await P.obtenerProyecto(db, g)).estado, 'en ejecución');
+// con un comprobante tampoco
+const h = await sesion('Con comprobante');
+await P.aprobarCotizacion(db, h);
+await E.agregarComprobante(db, h, 'fotos/9.jpg', null, null);
+assert.equal(await P.deshacerAprobacion(db, h), false);
 
 console.log('real ok');

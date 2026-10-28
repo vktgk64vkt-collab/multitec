@@ -34,9 +34,11 @@ export interface Proyecto {
   impuesto_pct: number;
   precios_con_itbis: number;
   descuento_pct: number;
+  ubicacion_url: string | null; // del cliente: para ir al sitio
+  cliente_direccion: string | null;
 }
 
-const SELECT = `SELECT p.*, c.nombre AS cliente FROM proyectos p JOIN clientes c ON c.id = p.cliente_id`;
+const SELECT = `SELECT p.*, c.nombre AS cliente, c.ubicacion_url AS ubicacion_url, c.direccion AS cliente_direccion FROM proyectos p JOIN clientes c ON c.id = p.cliente_id`;
 
 /**
  * Proyectos del más urgente al menos: primero la prioridad (alta, media, baja) y, dentro de cada una, el más reciente.
@@ -128,6 +130,27 @@ export async function aprobarCotizacion(db: SQLiteDatabase, id: number): Promise
   await db.withTransactionAsync(async () => {
     await db.runAsync("UPDATE proyectos SET aprobado_en = datetime('now', 'localtime'), cot_estado = 'aprobada', estado = 'cotizado' WHERE id = ?", id);
     await copiarCotizacion(db, id);
+  });
+  return true;
+}
+
+/**
+ * Deshace "Aprobada" si todavía no hay nada que perder: sin factura, sin cambios en la ejecución y sin comprobantes.
+ * Vuelve a ser una cotización enviada. Devuelve false si ya hay trabajo registrado.
+ */
+export async function deshacerAprobacion(db: SQLiteDatabase, id: number): Promise<boolean> {
+  const bloqueo = await db.getFirstAsync(
+    `SELECT 1 FROM proyectos p WHERE p.id = ?1 AND p.aprobado_en IS NOT NULL AND (
+       EXISTS (SELECT 1 FROM facturas WHERE proyecto_id = ?1)
+       OR EXISTS (SELECT 1 FROM comprobantes WHERE proyecto_id = ?1)
+       OR EXISTS (SELECT 1 FROM ejecucion_items WHERE proyecto_id = ?1 AND cantidad <> cantidad_cotizada))`,
+    id
+  );
+  const p = await db.getFirstAsync('SELECT 1 FROM proyectos WHERE id = ? AND aprobado_en IS NOT NULL', id);
+  if (bloqueo || !p) return false;
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM ejecucion_items WHERE proyecto_id = ?', id);
+    await db.runAsync("UPDATE proyectos SET aprobado_en = NULL, cot_estado = 'enviada', estado = 'cotizado', ejecucion_iniciada_en = NULL WHERE id = ?", id);
   });
   return true;
 }

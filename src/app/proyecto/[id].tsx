@@ -1,7 +1,7 @@
 import { Link, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
 import { resumenProyecto, type ResumenProyecto } from '@/db/resumen';
@@ -10,6 +10,7 @@ import {
   cambiarEstado,
   cambiarEstadoCotizacion,
   cambiarPrioridad,
+  deshacerAprobacion,
   duplicarProyecto,
   PRIORIDADES,
   reabrirProyecto,
@@ -21,6 +22,7 @@ import {
 import { formatearFecha, moneda } from '@/dinero';
 import { borrarFotos } from '@/fotos';
 import { siguientePaso, type Paso } from '@/flujo';
+import { enlaceDeBusqueda } from '@/ubicacion';
 import { BotonDictado } from '@/dictado';
 import { color, tarjeta } from '@/tema';
 import { Boton, Chip, Etiqueta } from '@/ui';
@@ -102,7 +104,7 @@ export default function DetalleProyecto() {
 
   async function irAlPaso(p: Paso) {
     if (p.destino === 'cerrar') return elegirEstado('cerrado');
-    if (p.destino === 'aprobar') return confirmarAprobar();
+    if (p.destino === 'aprobar') return aprobar();
     if (p.destino === 'reabrir') return elegirRespuesta('borrador');
     router.push({ pathname: RUTAS[p.destino], params: { proyecto: proyecto?.id } });
   }
@@ -117,18 +119,26 @@ export default function DetalleProyecto() {
     setProyecto((p) => p && { ...p, cot_estado: estado });
   }
 
-  function confirmarAprobar() {
-    Alert.alert('Aprobar cotización', 'Pasa a proyecto: se abre la ejecución con las líneas cotizadas y después podrás facturar.', [
+  /** Aprobada: un toque. Pasa a proyecto y se abre la ejecución con las líneas cotizadas. */
+  async function aprobar() {
+    if (await aprobarCotizacion(db, Number(id))) cargar();
+    else Alert.alert('Falta la cotización', 'Agrega al menos una línea a la cotización antes de aprobarla.');
+  }
+
+  function confirmarDeshacer() {
+    Alert.alert('Volver a cotización', 'La ejecución todavía no tiene cambios, así que se quita y el proyecto vuelve a ser una cotización enviada.', [
       { text: 'Cancelar', style: 'cancel' },
       {
-        text: 'Aprobar',
+        text: 'Volver',
         onPress: async () => {
-          if (await aprobarCotizacion(db, Number(id))) cargar();
-          else Alert.alert('Falta la cotización', 'Agrega al menos una línea a la cotización antes de aprobarla.');
+          if (await deshacerAprobacion(db, Number(id))) cargar();
+          else Alert.alert('Ya hay trabajo registrado', 'Tiene cambios, comprobantes o factura, y no se puede deshacer.');
         },
       },
     ]);
   }
+
+  const mapa = proyecto.ubicacion_url ?? (proyecto.cliente_direccion ? enlaceDeBusqueda(proyecto.cliente_direccion) : null);
 
   async function reabrir() {
     await reabrirProyecto(db, Number(id));
@@ -171,6 +181,10 @@ export default function DetalleProyecto() {
         {esCotizacion ? ` · Cotización ${proyecto.cot_estado}` : ''}
       </Text>
 
+      {mapa ? (
+        <Boton tipo="secundario" texto="Cómo llegar" onPress={() => Linking.openURL(mapa).catch(() => Alert.alert('No se pudo abrir', 'Revisa que Google Maps o Safari estén disponibles en este iPhone.'))} />
+      ) : null}
+
       {paso ? (
         <View style={[tarjeta, estilos.siguiente]}>
           <Text style={estilos.siguienteRotulo}>SIGUIENTE PASO</Text>
@@ -202,7 +216,7 @@ export default function DetalleProyecto() {
               <Chip key={e} borde texto={e} activo={e === proyecto.cot_estado} onPress={() => elegirRespuesta(e)} />
             ))}
           </View>
-          {resumen && resumen.lineas > 0 && paso?.destino !== 'aprobar' ? <Boton texto="Aprobar y pasar a proyecto" onPress={confirmarAprobar} /> : null}
+          {resumen && resumen.lineas > 0 && paso?.destino !== 'aprobar' ? <Boton texto="Aprobada" onPress={aprobar} /> : null}
         </>
       ) : (
         <Boton
@@ -219,6 +233,9 @@ export default function DetalleProyecto() {
         ))}
       </View>
 
+      {!esCotizacion && resumen && !resumen.factura && resumen.ejecucion && resumen.ejecucion.cambios === 0 && resumen.ejecucion.comprobantes === 0 ? (
+        <Boton tipo="secundario" texto="Volver a cotización (deshacer Aprobada)" onPress={confirmarDeshacer} />
+      ) : null}
       <Boton tipo="secundario" texto={esCotizacion ? 'Duplicar cotización' : 'Duplicar proyecto'} onPress={duplicar} />
       <Boton tipo="peligro" texto={esCotizacion ? 'Eliminar cotización' : 'Eliminar proyecto'} onPress={confirmarEliminar} />
       <Text style={estilos.creado}>Creado: {formatearFecha(proyecto.creado_en)}</Text>

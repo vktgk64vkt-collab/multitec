@@ -37,6 +37,12 @@
       ],
       "expo-sharing",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Tekhnia usa tu ubicación para guardar el punto exacto del cliente en Google Maps."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#EBD6C2",

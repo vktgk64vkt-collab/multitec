@@ -1,9 +1,9 @@
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { FiltroProyectos, Proyecto } from '@/db/proyectos';
+import { aprobarCotizacion, type FiltroProyectos, type Proyecto } from '@/db/proyectos';
 import { proyectosConResumen, type ProyectoConResumen } from '@/db/resumen';
 import { diasDesde, moneda } from '@/dinero';
 import { normalizar } from '@/pedido';
@@ -40,6 +40,11 @@ export default function Cotizaciones() {
       });
     }, [db, filtro])
   );
+
+  /** Aprobada: pasa a proyecto, arranca la ejecución y te lleva a él. */
+  async function aprobar(id: number) {
+    if (await aprobarCotizacion(db, id)) router.push({ pathname: '/proyecto/[id]', params: { id } });
+  }
 
   const q = normalizar(busqueda);
   const visibles = q ? filas.filter((f) => normalizar(`${f.proyecto.nombre} ${f.proyecto.cliente} ${f.proyecto.tipo}`).includes(q)) : filas;
@@ -78,6 +83,7 @@ export default function Cotizaciones() {
           <FilaProyecto
             proyecto={proyecto}
             detalle={detalleCotizacion(proyecto, resumen)}
+            accion={resumen.lineas > 0 && proyecto.cot_estado !== 'rechazada' ? { texto: 'Aprobada', onPress: () => aprobar(proyecto.id) } : undefined}
             href={{ pathname: '/proyecto/[id]', params: { id: proyecto.id } }}
           />
         )}

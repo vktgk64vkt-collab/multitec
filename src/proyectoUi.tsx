@@ -2,6 +2,7 @@ import { Link, type Href } from 'expo-router';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { haptico } from '@/accion';
 import { Alert } from '@/alert';
 import { FilaDeslizable } from '@/deslizar';
 import { eliminarProyecto, fotosDelProyecto, PRIORIDADES, type Proyecto } from '@/db/proyectos';
@@ -20,7 +21,20 @@ export function InsigniaPrioridad({ prioridad }: { prioridad: number }) {
 }
 
 /** Tarjeta de un proyecto para las listas: nombre, cliente, prioridad, estado y una línea propia de cada pantalla. */
-export function FilaProyecto({ proyecto, detalle, href, onEliminar }: { proyecto: Proyecto; detalle?: string; href: Href; onEliminar?: () => unknown }) {
+export function FilaProyecto({
+  proyecto,
+  detalle,
+  href,
+  onEliminar,
+  accion,
+}: {
+  proyecto: Proyecto;
+  detalle?: string;
+  href: Href;
+  onEliminar?: () => unknown;
+  /** Un botón de un toque en la propia fila (por ejemplo "Aprobada"). */
+  accion?: { texto: string; onPress: () => unknown };
+}) {
   const fila = (
     <Link href={href} asChild>
       <Pressable accessibilityRole="button" accessibilityLabel={`${proyecto.nombre}, ${proyecto.cliente}`} style={[tarjeta, estilos.fila]}>
@@ -36,6 +50,19 @@ export function FilaProyecto({ proyecto, detalle, href, onEliminar }: { proyecto
           <Text style={[estilos.estado, { color: colorEstado[proyecto.aprobado_en ? proyecto.estado : proyecto.cot_estado] ?? color.primario }]}>
             {proyecto.aprobado_en ? proyecto.estado : proyecto.cot_estado}
           </Text>
+          {accion ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${accion.texto}: ${proyecto.nombre}`}
+              hitSlop={8}
+              style={estilos.accion}
+              onPress={() => {
+                haptico();
+                accion.onPress();
+              }}>
+              <Text style={estilos.textoAccion}>{accion.texto}</Text>
+            </Pressable>
+          ) : null}
         </View>
       </Pressable>
     </Link>
@@ -69,6 +96,8 @@ const estilos = StyleSheet.create({
   linea: { fontSize: 13, fontWeight: '600', color: color.primario, marginTop: 2 },
   derecha: { alignItems: 'flex-end', gap: 4 },
   estado: { fontSize: 12, fontWeight: '600', color: color.primario, textTransform: 'capitalize' },
+  accion: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 10, backgroundColor: color.ok },
+  textoAccion: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
   insignia: { fontSize: 11, fontWeight: '800', letterSpacing: 1, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, overflow: 'hidden' },
   alta: { backgroundColor: color.peligro, color: '#ffffff' },
   baja: { backgroundColor: color.fondo, color: color.suave },

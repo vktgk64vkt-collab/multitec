@@ -10,6 +10,7 @@ import { formatearFecha } from '@/dinero';
 import { eliminarCliente, obtenerCliente, type Cliente } from '@/db/clientes';
 import { listarProyectos, type Proyecto } from '@/db/proyectos';
 import { color } from '@/tema';
+import { coordenadasDeEnlace, enlaceDeBusqueda, textoCoordenadas } from '@/ubicacion';
 import { Boton, Etiqueta, Tarjeta } from '@/ui';
 
 export default function DetalleCliente() {
@@ -42,6 +43,8 @@ export default function DetalleCliente() {
     ]);
   }
 
+  const punto = cliente.ubicacion_url ? coordenadasDeEnlace(cliente.ubicacion_url) : null;
+  const comoLlegar = cliente.ubicacion_url ?? (cliente.direccion ? enlaceDeBusqueda(cliente.direccion) : null);
   const datos: { etiqueta: string; valor: string | null; enlace?: string }[] = [
     { etiqueta: 'Empresa', valor: cliente.empresa },
     { etiqueta: 'Teléfono', valor: cliente.telefono, enlace: cliente.telefono ? `tel:${cliente.telefono}` : undefined },
@@ -49,7 +52,12 @@ export default function DetalleCliente() {
     {
       etiqueta: 'Dirección',
       valor: cliente.direccion,
-      enlace: cliente.direccion ? `https://maps.apple.com/?q=${encodeURIComponent(cliente.direccion)}` : undefined,
+      enlace: cliente.direccion ? enlaceDeBusqueda(cliente.direccion) : undefined,
+    },
+    {
+      etiqueta: 'Ubicación',
+      valor: cliente.ubicacion_url ? `Ver en Google Maps${punto ? ` · ${textoCoordenadas(punto)}` : ''}` : null,
+      enlace: cliente.ubicacion_url ?? undefined,
     },
     { etiqueta: 'ID fiscal', valor: cliente.id_fiscal },
     { etiqueta: 'Notas', valor: cliente.notas },
@@ -66,6 +74,7 @@ export default function DetalleCliente() {
       <View style={estilos.acciones}>
         {cliente.telefono ? <Boton texto="Llamar" onPress={() => abrir(`tel:${cliente.telefono}`)} /> : null}
         {whatsapp ? <Boton tipo="secundario" texto="WhatsApp" onPress={() => abrir(whatsapp)} /> : null}
+        {comoLlegar ? <Boton tipo="secundario" texto="Cómo llegar" onPress={() => abrir(comoLlegar)} /> : null}
       </View>
 
       <Tarjeta>
