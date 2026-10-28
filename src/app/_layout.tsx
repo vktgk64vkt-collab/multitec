@@ -9,7 +9,7 @@ export default function RootLayout() {
     <SQLiteProvider databaseName="multitec.db" onInit={migrarBaseDeDatos}>
       <Stack screenOptions={{ contentStyle: { backgroundColor: color.fondo }, headerTintColor: color.primario, headerBackButtonDisplayMode: 'minimal' }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="proyecto/nuevo" options={{ title: 'Nuevo proyecto', presentation: 'modal' }} />
+        <Stack.Screen name="proyecto/nuevo" options={{ title: 'Nuevo levantamiento', presentation: 'modal' }} />
         <Stack.Screen name="proyecto/[id]" options={{ title: 'Proyecto' }} />
         <Stack.Screen name="levantamiento" />
         <Stack.Screen name="cotizacion" />

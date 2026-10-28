@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { totales } from '@/dinero';
 import { obtenerOpciones, type Linea } from './cotizacion';
+import { incrementarNcf } from '../ncf';
 import { lineasParaFacturar } from './ejecucion';
 
 export interface Factura {
@@ -10,6 +11,8 @@ export interface Factura {
   ncf: string;
   subtotal_cts: number;
   impuesto_cts: number;
+  descuento_cts: number;
+  descuento_pct: number;
   total_cts: number;
   pagada: number;
   anulada: number;
@@ -22,7 +25,16 @@ export interface Factura {
 }
 
 // NCF tradicional (B01 + 8 dígitos) o e-NCF (E31 + 10 dígitos)
+/** Factura sin comprobante fiscal: el NCF queda en ceros y puede repetirse. */
+export const SIN_NCF = '00000000';
+
 export const NCF_VALIDO = /^(B\d{2}\d{8}|E\d{2}\d{10})$/;
+
+/** El NCF que toca después del último emitido (también cuenta el de una anulada: queda consumido). null si aún no hay ninguno. */
+export async function siguienteNcf(db: SQLiteDatabase): Promise<string | null> {
+  const r = await db.getFirstAsync<{ ncf: string }>('SELECT ncf FROM facturas WHERE ncf <> ? ORDER BY id DESC LIMIT 1', SIN_NCF);
+  return incrementarNcf(r?.ncf);
+}
 
 export function obtenerFactura(db: SQLiteDatabase, proyectoId: number) {
   return db.getFirstAsync<Factura>(
@@ -36,8 +48,8 @@ export function obtenerFactura(db: SQLiteDatabase, proyectoId: number) {
 }
 
 export function listarLineasFactura(db: SQLiteDatabase, facturaId: number) {
-  return db.getAllAsync<Pick<Linea, 'descripcion' | 'cantidad' | 'precio_cts' | 'descuento_pct' | 'tipo' | 'detalle'>>(
-    'SELECT descripcion, cantidad, precio_cts, descuento_pct, tipo, detalle FROM factura_items WHERE factura_id = ? ORDER BY id',
+  return db.getAllAsync<Pick<Linea, 'descripcion' | 'cantidad' | 'precio_cts' | 'descuento_pct' | 'tipo' | 'detalle' | 'trabajo'>>(
+    'SELECT descripcion, cantidad, precio_cts, descuento_pct, tipo, detalle, trabajo FROM factura_items WHERE factura_id = ? ORDER BY id',
     facturaId
   );
 }
@@ -46,22 +58,22 @@ export type ResultadoFactura = 'ok' | 'sin_monto' | 'ncf_repetido';
 
 /** Congela líneas y totales de la cotización actual. */
 export async function crearFactura(db: SQLiteDatabase, proyectoId: number, ncf: string): Promise<ResultadoFactura> {
-  const { lineas } = await lineasParaFacturar(db, proyectoId); // las de la ejecución si ya empezó; si no, las de la cotización
-  const op = await obtenerOpciones(db, proyectoId);
-  const t = totales(lineas, op.impuesto_pct, op.con_itbis);
+  // las líneas de la ejecución si ya empezó; si no, las de la cotización
+  const [{ lineas }, op] = await Promise.all([lineasParaFacturar(db, proyectoId), obtenerOpciones(db, proyectoId)]);
+  const t = totales(lineas, op.impuesto_pct, op.con_itbis, op.descuento_pct);
   if (t.total <= 0) return 'sin_monto';
   // un NCF no se repite, tampoco el de una factura anulada (queda consumido)
-  const usado = await db.getFirstAsync('SELECT 1 FROM facturas WHERE ncf = ?', ncf);
+  const usado = ncf !== SIN_NCF && (await db.getFirstAsync('SELECT 1 FROM facturas WHERE ncf = ?', ncf));
   if (usado) return 'ncf_repetido';
   await db.withTransactionAsync(async () => {
     const f = await db.runAsync(
-      "INSERT INTO facturas (proyecto_id, ncf, subtotal_cts, impuesto_cts, total_cts, vence) VALUES (?, ?, ?, ?, ?, date('now', 'localtime', '+30 days'))",
-      proyectoId, ncf, t.subtotal, t.impuesto, t.total
+      "INSERT INTO facturas (proyecto_id, ncf, subtotal_cts, descuento_cts, descuento_pct, impuesto_cts, total_cts, vence) VALUES (?, ?, ?, ?, ?, ?, ?, date('now', 'localtime', '+30 days'))",
+      proyectoId, ncf, t.subtotal, t.descuento, op.descuento_pct, t.impuesto, t.total
     );
     for (const l of lineas) {
       await db.runAsync(
-        'INSERT INTO factura_items (factura_id, descripcion, cantidad, precio_cts, descuento_pct, tipo, detalle, item_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        f.lastInsertRowId, l.descripcion, l.cantidad, l.precio_cts, l.descuento_pct, l.tipo, l.detalle, l.item_id
+        'INSERT INTO factura_items (factura_id, descripcion, cantidad, precio_cts, descuento_pct, tipo, detalle, item_id, trabajo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        f.lastInsertRowId, l.descripcion, l.cantidad, l.precio_cts, l.descuento_pct, l.tipo, l.detalle, l.item_id, l.trabajo
       );
       // el inventario baja al facturar (solo productos con stock controlado; nunca por debajo de 0)
       if (l.item_id !== null) {
@@ -147,9 +159,15 @@ export async function resumenFacturas(db: SQLiteDatabase) {
     `SELECT COALESCE(SUM(f.total_cts - COALESCE((SELECT SUM(monto_cts) FROM pagos WHERE factura_id = f.id), 0)), 0) AS vencido
      ${VISIBLES} AND f.pagada = 0 AND f.vence < date('now', 'localtime')`
   );
+  // lo cobrado en el mes en curso (por la fecha del pago)
+  const m = await db.getFirstAsync<{ cobrado_mes: number }>(
+    `SELECT COALESCE(SUM(p.monto_cts), 0) AS cobrado_mes FROM pagos p JOIN facturas f ON f.id = p.factura_id
+     WHERE f.anulada = 0 AND p.creado_en >= date('now', 'localtime', 'start of month')`
+  );
   return {
     por_cobrar: Math.max(0, (r?.total ?? 0) - (r?.cobrado ?? 0)),
     cobrado: r?.cobrado ?? 0,
+    cobrado_mes: m?.cobrado_mes ?? 0,
     vencido: v?.vencido ?? 0,
   };
 }

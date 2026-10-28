@@ -39,4 +39,20 @@ assert.deepEqual(lista("WHERE p.estado = 'cerrado'"), ['cerrado-alta']);
 // Todos: los cerrados al final aunque tengan prioridad alta
 assert.deepEqual(lista(''), ['alta-nueva', 'alta-vieja', 'misma-fecha-a', 'media-nueva', 'viejo', 'baja-nueva', 'cerrado-alta']);
 
+// --- migración 22: cotización antes que proyecto (el SQL sale del código)
+const aprobados = migraciones.match(/APROBADOS_SQL = `([^`]+)`/)[1];
+const db2 = new DatabaseSync(':memory:');
+db2.exec(`CREATE TABLE proyectos(id INTEGER PRIMARY KEY, estado TEXT, creado_en TEXT, ejecucion_iniciada_en TEXT);
+CREATE TABLE facturas(id INTEGER PRIMARY KEY, proyecto_id INT);
+INSERT INTO proyectos VALUES (1, 'levantamiento', '2026-01-01', NULL), (2, 'cotizado', '2026-01-02', NULL), (3, 'en ejecución', '2026-01-03', NULL),
+  (4, 'facturado', '2026-01-04', NULL), (5, 'cerrado', '2026-01-05', NULL), (6, 'cotizado', '2026-01-06', '2026-02-01'), (7, 'cotizado', '2026-01-07', NULL);
+INSERT INTO facturas VALUES (1, 7);
+ALTER TABLE proyectos ADD COLUMN aprobado_en TEXT;
+ALTER TABLE proyectos ADD COLUMN cot_estado TEXT NOT NULL DEFAULT 'borrador';`);
+db2.exec(aprobados);
+const aprobado = db2.prepare('SELECT id FROM proyectos WHERE aprobado_en IS NOT NULL ORDER BY id').all().map((r) => r.id);
+assert.deepEqual(aprobado, [3, 4, 5, 6, 7], 'con ejecución, factura o cerrados siguen siendo proyectos; el resto vuelve a cotización');
+assert.equal(db2.prepare('SELECT cot_estado c FROM proyectos WHERE id = 1').get().c, 'borrador');
+assert.equal(db2.prepare('SELECT cot_estado c FROM proyectos WHERE id = 3').get().c, 'aprobada');
+
 console.log('proyectos ok');

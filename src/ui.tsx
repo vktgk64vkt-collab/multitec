@@ -139,7 +139,7 @@ const estilos = StyleSheet.create({
   multilinea: { minHeight: 90, textAlignVertical: 'top' },
   boton: { padding: 14, minHeight: TOQUE_MIN, borderRadius: 14, backgroundColor: color.primario, alignItems: 'center', justifyContent: 'center' },
   secundario: { backgroundColor: color.tarjeta, borderWidth: 1, borderColor: color.primario },
-  peligro: { backgroundColor: '#c0262d' },
+  peligro: { backgroundColor: color.peligro },
   ocupado: { opacity: 0.6 },
   textoBoton: { color: '#fff', fontSize: 16, fontWeight: '600' },
   chip: { minHeight: TOQUE_MIN, paddingHorizontal: 14, borderRadius: 22, backgroundColor: color.fondo, alignItems: 'center', justifyContent: 'center' },

@@ -2,6 +2,7 @@ import { type ReactNode, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { haptico } from '@/accion';
+import { color } from '@/tema';
 
 const ANCHO = 96; // lo que asoma el botón al deslizar
 const UMBRAL = ANCHO / 2; // pasado este punto, al soltar queda abierto
@@ -80,6 +81,6 @@ export function FilaDeslizable({
 
 const estilos = StyleSheet.create({
   accion: { position: 'absolute', top: 0, bottom: 0, right: 0, width: ANCHO },
-  boton: { flex: 1, marginLeft: 8, borderRadius: 14, backgroundColor: '#c0262d', alignItems: 'center', justifyContent: 'center' },
+  boton: { flex: 1, marginLeft: 8, borderRadius: 14, backgroundColor: color.peligro, alignItems: 'center', justifyContent: 'center' },
   texto: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
 });

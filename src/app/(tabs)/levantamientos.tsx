@@ -19,9 +19,9 @@ export default function Levantamientos() {
 
   useFocusEffect(
     useCallback(() => {
-      // un proyecto ya facturado no se levanta más: para eso están Proyectos o Facturas
-      proyectosConResumen(db, 'activos').then((r) => {
-        setFilas(r.filter((x) => !x.resumen.factura));
+      // el levantamiento es de las cotizaciones por responder; los proyectos aprobados se abren desde Proyectos
+      proyectosConResumen(db, 'activos', 'cotizacion').then((r) => {
+        setFilas(r);
         setCargado(true);
       });
     }, [db])
@@ -31,7 +31,7 @@ export default function Levantamientos() {
   const visibles = q ? filas.filter((f) => normalizar(`${f.proyecto.nombre} ${f.proyecto.cliente} ${f.proyecto.tipo}`).includes(q)) : filas;
 
   return (
-    <PantallaTab titulo="Levantamiento" subtitulo="¿En qué proyecto estás ahora?">
+    <PantallaTab titulo="Levantamiento" subtitulo="¿Dónde estás ahora? Elige o crea el levantamiento">
       <FlatList {...PROPS_TECLADO}
         data={visibles}
         keyExtractor={(f) => String(f.proyecto.id)}
@@ -43,10 +43,10 @@ export default function Levantamientos() {
             <Text style={estilos.vacio}>Sin resultados.</Text>
           ) : (
           <>
-            <Text style={estilos.vacio}>No hay proyectos para levantar. Crea uno y empieza a agregar equipos.</Text>
+            <Text style={estilos.vacio}>Aún no hay levantamientos. Crea uno y empieza a agregar equipos.</Text>
             <Link href="/proyecto/nuevo" asChild>
               <Pressable accessibilityRole="button" style={estilos.nuevo}>
-                <Text style={estilos.textoNuevo}>+ Nuevo proyecto</Text>
+                <Text style={estilos.textoNuevo}>+ Nuevo levantamiento</Text>
               </Pressable>
             </Link>
           </>

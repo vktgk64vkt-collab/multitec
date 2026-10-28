@@ -53,7 +53,7 @@ export default function Proyectos() {
               <View style={{ flex: 1 }} />
               <Link href="/proyecto/nuevo" asChild>
                 <Pressable accessibilityRole="button" style={estilos.nuevo}>
-                  <Text style={estilos.textoNuevo}>+ Nuevo</Text>
+                  <Text style={estilos.textoNuevo}>+ Levantamiento</Text>
                 </Pressable>
               </Link>
             </View>

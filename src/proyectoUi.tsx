@@ -4,8 +4,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
 import { FilaDeslizable } from '@/deslizar';
-import { eliminarProyecto, PRIORIDADES, type Proyecto } from '@/db/proyectos';
-import { color, tarjeta } from '@/tema';
+import { eliminarProyecto, fotosDelProyecto, PRIORIDADES, type Proyecto } from '@/db/proyectos';
+import { borrarFotos } from '@/fotos';
+import { color, colorEstado, tarjeta } from '@/tema';
 
 /** Solo se destacan las prioridades que se salen de lo normal: la media no lleva insignia. */
 export function InsigniaPrioridad({ prioridad }: { prioridad: number }) {
@@ -32,7 +33,9 @@ export function FilaProyecto({ proyecto, detalle, href, onEliminar }: { proyecto
         </View>
         <View style={estilos.derecha}>
           <InsigniaPrioridad prioridad={proyecto.prioridad} />
-          <Text style={estilos.estado}>{proyecto.estado}</Text>
+          <Text style={[estilos.estado, { color: colorEstado[proyecto.aprobado_en ? proyecto.estado : proyecto.cot_estado] ?? color.primario }]}>
+            {proyecto.aprobado_en ? proyecto.estado : proyecto.cot_estado}
+          </Text>
         </View>
       </Pressable>
     </Link>
@@ -48,7 +51,11 @@ export function confirmarEliminarProyecto(db: SQLiteDatabase, p: Proyecto, despu
       text: 'Eliminar',
       style: 'destructive',
       onPress: async () => {
-        if (await eliminarProyecto(db, p.id)) despues();
+        const fotos = await fotosDelProyecto(db, p.id);
+        if (await eliminarProyecto(db, p.id)) {
+          borrarFotos(fotos);
+          despues();
+        }
         else Alert.alert('Tiene factura', 'Un proyecto con factura no se borra. Anula la factura si fue un error; el NCF queda registrado.');
       },
     },
@@ -63,6 +70,6 @@ const estilos = StyleSheet.create({
   derecha: { alignItems: 'flex-end', gap: 4 },
   estado: { fontSize: 12, fontWeight: '600', color: color.primario, textTransform: 'capitalize' },
   insignia: { fontSize: 11, fontWeight: '800', letterSpacing: 1, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, overflow: 'hidden' },
-  alta: { backgroundColor: '#c0262d', color: '#ffffff' },
+  alta: { backgroundColor: color.peligro, color: '#ffffff' },
   baja: { backgroundColor: color.fondo, color: color.suave },
 });

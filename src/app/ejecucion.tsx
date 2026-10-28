@@ -6,7 +6,7 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 
 import { Alert } from '@/alert';
 import { listarCatalogo, type Producto, type TipoItem } from '@/db/catalogo';
-import { obtenerOpciones } from '@/db/cotizacion';
+import { listarTrabajos, obtenerOpciones } from '@/db/cotizacion';
 import {
   agregarAEjecucion,
   agregarComprobante,
@@ -27,8 +27,10 @@ import {
 import { FilaDeslizable } from '@/deslizar';
 import { aCentavos, formatear, formatearFecha, importe, moneda, precioParaProyecto } from '@/dinero';
 import { textoCambio, tipoCambio } from '@/ejecucion';
-import { guardarFoto, uriFoto } from '@/fotos';
+import { borrarFotos, guardarFoto, uriFoto } from '@/fotos';
 import { detalleArticulo } from '@/nomenclatura';
+import { agruparPorTrabajo, etiquetaTrabajo, hayVariosTrabajos, limpiarTrabajo, trabajoAuto } from '@/trabajos';
+import { SelectorTrabajo } from '@/trabajosUi';
 import { color } from '@/tema';
 import { Boton, Campo, Chip, Etiqueta, PROPS_TECLADO, Tarjeta } from '@/ui';
 
@@ -47,6 +49,8 @@ export default function Ejecucion() {
   const [resumen, setResumen] = useState<ResumenEjecucion | null>(null);
   const [inventario, setInventario] = useState<Producto[]>([]);
   const [busqueda, setBusqueda] = useState('');
+  const [trabajos, setTrabajos] = useState<string[]>([]);
+  const [trabajo, setTrabajo] = useState<string | undefined>(undefined); // undefined = Auto
   const [descripcion, setDescripcion] = useState('');
   const [cantidad, setCantidad] = useState('1');
   const [precio, setPrecio] = useState('');
@@ -57,12 +61,21 @@ export default function Ejecucion() {
   const [visor, setVisor] = useState<string | null>(null);
 
   const cargar = useCallback(() => {
-    ejecucionIniciada(db, proyectoId).then(async (ini) => {
+    // sin ejecución iniciada, listarEjecucion devuelve [] y resumenEjecucion null: no hace falta esperar a saberlo
+    Promise.all([
+      ejecucionIniciada(db, proyectoId),
+      listarEjecucion(db, proyectoId),
+      resumenEjecucion(db, proyectoId),
+      listarComprobantes(db, proyectoId),
+      listarTrabajos(db, proyectoId),
+      listarCatalogo(db),
+    ]).then(([ini, ls, res, comps, ts, inv]) => {
       setIniciada(ini);
-      setLineas(ini ? await listarEjecucion(db, proyectoId) : []);
-      setResumen(ini ? await resumenEjecucion(db, proyectoId) : null);
-      setComprobantes(await listarComprobantes(db, proyectoId));
-      setInventario(await listarCatalogo(db));
+      setLineas(ls);
+      setResumen(res);
+      setComprobantes(comps);
+      setTrabajos(ts);
+      setInventario(inv);
     });
   }, [db, proyectoId]);
   useFocusEffect(cargar);
@@ -91,6 +104,7 @@ export default function Ejecucion() {
       costo_cts: p.costo_cts,
       item_id: p.id,
       detalle: detalleArticulo(p),
+      trabajo: trabajo === undefined ? trabajoAuto(p.categoria) : limpiarTrabajo(trabajo),
     });
     setBusqueda('');
     cargar();
@@ -102,7 +116,7 @@ export default function Ejecucion() {
     if (!descripcion.trim() || !Number.isInteger(n) || n < 1 || cts === null) {
       return Alert.alert('Faltan datos', 'Escribe qué es, la cantidad (entera, mayor a 0) y el precio con el que se factura.');
     }
-    await agregarAEjecucion(db, proyectoId, { descripcion: descripcion.trim(), cantidad: n, precio_cts: cts, tipo });
+    await agregarAEjecucion(db, proyectoId, { descripcion: descripcion.trim(), cantidad: n, precio_cts: cts, tipo, trabajo: limpiarTrabajo(trabajo) });
     setDescripcion('');
     setCantidad('1');
     setPrecio('');
@@ -156,6 +170,7 @@ export default function Ejecucion() {
         style: 'destructive',
         onPress: async () => {
           await eliminarComprobante(db, c.id);
+          borrarFotos([c.foto_uri]);
           cargar();
         },
       },
@@ -192,6 +207,9 @@ export default function Ejecucion() {
   }
 
   const diferencia = resumen ? resumen.real_cts - resumen.cotizado_cts : 0;
+  // con varios trabajos, las líneas se ordenan por trabajo y cada una lo muestra
+  const variosTrabajos = hayVariosTrabajos(lineas);
+  const ordenadas = variosTrabajos ? agruparPorTrabajo(lineas).flatMap((g) => g.lineas) : lineas;
 
   return (
     <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
@@ -237,7 +255,7 @@ export default function Ejecucion() {
 
           <Etiqueta>Equipos y materiales</Etiqueta>
           {lineas.length === 0 ? <Text style={estilos.vacio}>No hay equipos en la ejecución.</Text> : null}
-          {lineas.map((l) => {
+          {ordenadas.map((l) => {
             const cambio = tipoCambio(l);
             const quitada = l.cantidad === 0 && l.cantidad_cotizada > 0;
             return (
@@ -245,8 +263,9 @@ export default function Ejecucion() {
                 <Tarjeta style={{ gap: 6, opacity: quitada ? 0.55 : 1 }}>
                   <View style={estilos.fila}>
                     <View style={{ flex: 1, gap: 2 }}>
+                      {variosTrabajos ? <Text style={estilos.detalle}>{etiquetaTrabajo(l.trabajo)}</Text> : null}
                       <Text style={[estilos.nombre, quitada && estilos.tachado]}>{l.descripcion}</Text>
-                      {cambio !== 'igual' ? <Text style={[estilos.cambio, cambio === 'agregado' ? { color: color.ok } : cambio === 'quitado' ? { color: '#c0262d' } : null]}>{textoCambio(l)}</Text> : null}
+                      {cambio !== 'igual' ? <Text style={[estilos.cambio, cambio === 'agregado' ? { color: color.ok } : cambio === 'quitado' ? { color: color.peligro } : null]}>{textoCambio(l)}</Text> : null}
                       {l.detalle ? <Text style={estilos.detalle}>{l.detalle}</Text> : null}
                     </View>
                     <View style={estilos.cantidades}>
@@ -272,6 +291,7 @@ export default function Ejecucion() {
 
           <Tarjeta>
             <Etiqueta>Agregar algo que se usó</Etiqueta>
+            <SelectorTrabajo trabajos={trabajos} valor={trabajo} onElegir={setTrabajo} />
             <Campo placeholder="Buscar en el inventario (nombre o código)" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
             {sugerencias.map((p) => (
               <Pressable key={p.id} accessibilityRole="button" accessibilityLabel={`Agregar ${p.nombre}`} style={estilos.sugerencia} onPress={() => agregarDelInventario(p)}>

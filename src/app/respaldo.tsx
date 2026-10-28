@@ -4,17 +4,34 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
-import { exportarRespaldo, restaurarRespaldo } from '@/respaldo';
+import { exportarRespaldo, guardarRespaldoEn, restaurarFotos, restaurarRespaldo } from '@/respaldo';
 import { color } from '@/tema';
 
 export default function Respaldo() {
   const db = useSQLiteContext();
 
+  async function guardar() {
+    try {
+      if (await guardarRespaldoEn(db)) Alert.alert('Listo', 'El respaldo se guardó en la carpeta que elegiste.');
+    } catch (e) {
+      Alert.alert('No se pudo guardar', String(e));
+    }
+  }
+
   async function exportar() {
     try {
       if (!(await exportarRespaldo(db))) Alert.alert('No disponible', 'El respaldo solo funciona en el iPhone.');
     } catch (e) {
-      Alert.alert('No se pudo exportar', String(e));
+      Alert.alert('No se pudo compartir', String(e));
+    }
+  }
+
+  async function fotos() {
+    try {
+      const n = await restaurarFotos();
+      if (n !== null) Alert.alert('Listo', n === 0 ? 'La carpeta no tenía fotos.' : `Se devolvieron ${n} fotos.`);
+    } catch (e) {
+      Alert.alert('No se pudieron restaurar las fotos', String(e));
     }
   }
 
@@ -42,13 +59,19 @@ export default function Respaldo() {
     <View style={estilos.contenedor}>
       <Stack.Screen options={{ title: 'Respaldo' }} />
       <Text style={estilos.texto}>
-        Guarda una copia de clientes, proyectos, cotizaciones, facturas y bitácora. Envíala a Archivos, AirDrop o correo.
-        Las fotos y el logo no van incluidos.
+        Guarda una copia de clientes, proyectos, cotizaciones, facturas y bitácora. Elige la carpeta donde guardarla (Archivos, iCloud Drive o el iPhone), o compártela por AirDrop o correo.
+        Las fotos van en una carpeta junto al respaldo; para recuperarlas, restaura el respaldo y luego devuélvelas desde esa carpeta.
       </Text>
-      <Pressable style={estilos.boton} onPress={exportar}>
-        <Text style={estilos.textoBoton}>Exportar respaldo</Text>
+      <Pressable accessibilityRole="button" style={estilos.boton} onPress={guardar}>
+        <Text style={estilos.textoBoton}>Guardar respaldo en una carpeta</Text>
       </Pressable>
-      <Pressable style={[estilos.boton, estilos.peligro]} onPress={elegirRestaurar}>
+      <Pressable accessibilityRole="button" style={[estilos.boton, estilos.secundario]} onPress={exportar}>
+        <Text style={[estilos.textoBoton, { color: color.primario }]}>Compartir (AirDrop, correo...)</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" style={[estilos.boton, estilos.secundario]} onPress={fotos}>
+        <Text style={[estilos.textoBoton, { color: color.primario }]}>Devolver las fotos desde una carpeta</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" style={[estilos.boton, estilos.peligro]} onPress={elegirRestaurar}>
         <Text style={estilos.textoBoton}>Restaurar desde archivo</Text>
       </Pressable>
     </View>
@@ -59,6 +82,7 @@ const estilos = StyleSheet.create({
   contenedor: { padding: 16, gap: 12 },
   texto: { fontSize: 15, color: color.suave },
   boton: { padding: 14, borderRadius: 14, backgroundColor: color.primario, alignItems: 'center' },
-  peligro: { backgroundColor: '#c0262d' },
+  secundario: { backgroundColor: 'transparent', borderWidth: 1, borderColor: color.primario },
+  peligro: { backgroundColor: color.peligro },
   textoBoton: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

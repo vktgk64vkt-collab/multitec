@@ -5,14 +5,28 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
 import { resumenProyecto, type ResumenProyecto } from '@/db/resumen';
-import { cambiarEstado, cambiarPrioridad, duplicarProyecto, PRIORIDADES, eliminarProyecto, ESTADOS, obtenerProyecto, type Proyecto } from '@/db/proyectos';
+import {
+  aprobarCotizacion,
+  cambiarEstado,
+  cambiarEstadoCotizacion,
+  cambiarPrioridad,
+  duplicarProyecto,
+  PRIORIDADES,
+  reabrirProyecto,
+  eliminarProyecto,
+  fotosDelProyecto,
+  obtenerProyecto,
+  type Proyecto,
+} from '@/db/proyectos';
 import { formatearFecha, moneda } from '@/dinero';
+import { borrarFotos } from '@/fotos';
 import { siguientePaso, type Paso } from '@/flujo';
 import { BotonDictado } from '@/dictado';
 import { color, tarjeta } from '@/tema';
 import { Boton, Chip, Etiqueta } from '@/ui';
 
 const RUTAS = { levantamiento: '/levantamiento', cotizacion: '/cotizacion', ejecucion: '/ejecucion', factura: '/factura' } as const;
+// los destinos que no abren otra pantalla (aprobar, reabrir, cerrar) se resuelven antes de navegar
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
 
@@ -22,14 +36,16 @@ export default function DetalleProyecto() {
   const [proyecto, setProyecto] = useState<Proyecto | null>(null);
   const [resumen, setResumen] = useState<ResumenProyecto | null>(null);
 
-  useFocusEffect(
-    useCallback(() => {
-      obtenerProyecto(db, Number(id)).then(setProyecto);
-      resumenProyecto(db, Number(id)).then(setResumen);
-    }, [db, id])
-  );
+  const cargar = useCallback(() => {
+    obtenerProyecto(db, Number(id)).then(setProyecto);
+    resumenProyecto(db, Number(id)).then(setResumen);
+  }, [db, id]);
+  useFocusEffect(cargar);
 
   if (!proyecto) return null;
+
+  // sin aprobar es una cotización: solo levantamiento, cotización y propuesta; al aprobarla pasa a proyecto con todo lo demás
+  const esCotizacion = !proyecto.aprobado_en;
 
   // línea de estado de cada paso: lo que ya hay hecho, sin entrar a la pantalla
   const pasos = [
@@ -41,7 +57,7 @@ export default function DetalleProyecto() {
     {
       ruta: '/cotizacion',
       titulo: 'Cotización',
-      detalle: resumen && resumen.lineas > 0 ? `${plural(resumen.lineas, 'línea', 'líneas')} · ${moneda(resumen.total_cts)}` : 'Líneas, descuentos e impuesto',
+      detalle: resumen && resumen.lineas > 0 ? `${plural(resumen.lineas, 'línea', 'líneas')} · ${moneda(resumen.total_cts)}` : 'Líneas, descuento e impuesto',
     },
     {
       ruta: '/propuesta',
@@ -72,17 +88,51 @@ export default function DetalleProyecto() {
   ] as const;
 
   const paso = resumen
-    ? siguientePaso({ estado: proyecto.estado, partidas: resumen.partidas, lineas: resumen.lineas, total_cts: resumen.total_cts, factura: resumen.factura, ejecucion: resumen.ejecucion })
+    ? siguientePaso({
+        estado: proyecto.estado,
+        etapa: esCotizacion ? 'cotizacion' : 'proyecto',
+        cot_estado: proyecto.cot_estado,
+        partidas: resumen.partidas,
+        lineas: resumen.lineas,
+        total_cts: resumen.total_cts,
+        factura: resumen.factura,
+        ejecucion: resumen.ejecucion,
+      })
     : null;
 
   async function irAlPaso(p: Paso) {
     if (p.destino === 'cerrar') return elegirEstado('cerrado');
+    if (p.destino === 'aprobar') return confirmarAprobar();
+    if (p.destino === 'reabrir') return elegirRespuesta('borrador');
     router.push({ pathname: RUTAS[p.destino], params: { proyecto: proyecto?.id } });
   }
 
   async function elegirPrioridad(prioridad: number) {
     await cambiarPrioridad(db, Number(id), prioridad);
     setProyecto((p) => p && { ...p, prioridad });
+  }
+
+  async function elegirRespuesta(estado: 'borrador' | 'enviada' | 'rechazada') {
+    await cambiarEstadoCotizacion(db, Number(id), estado);
+    setProyecto((p) => p && { ...p, cot_estado: estado });
+  }
+
+  function confirmarAprobar() {
+    Alert.alert('Aprobar cotización', 'Pasa a proyecto: se abre la ejecución con las líneas cotizadas y después podrás facturar.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Aprobar',
+        onPress: async () => {
+          if (await aprobarCotizacion(db, Number(id))) cargar();
+          else Alert.alert('Falta la cotización', 'Agrega al menos una línea a la cotización antes de aprobarla.');
+        },
+      },
+    ]);
+  }
+
+  async function reabrir() {
+    await reabrirProyecto(db, Number(id));
+    cargar();
   }
 
   async function elegirEstado(estado: string) {
@@ -98,13 +148,14 @@ export default function DetalleProyecto() {
     if (resumen?.factura) {
       return Alert.alert('Tiene factura', 'Un proyecto con factura no se borra. Anula la factura si fue un error; el NCF queda registrado.');
     }
-    Alert.alert('Eliminar proyecto', `¿Eliminar ${proyecto?.nombre}? Se borran su levantamiento, cotización y bitácora. No se puede deshacer.`, [
+    Alert.alert(esCotizacion ? 'Eliminar cotización' : 'Eliminar proyecto', `¿Eliminar ${proyecto?.nombre}? Se borran su levantamiento, cotización y bitácora. No se puede deshacer.`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Eliminar',
         style: 'destructive',
         onPress: async () => {
-          await eliminarProyecto(db, Number(id));
+          const fotos = await fotosDelProyecto(db, Number(id));
+          if (await eliminarProyecto(db, Number(id))) borrarFotos(fotos);
           router.back();
         },
       },
@@ -117,6 +168,7 @@ export default function DetalleProyecto() {
       <Text style={estilos.nombre}>{proyecto.nombre}</Text>
       <Text style={estilos.detalle}>
         {proyecto.cliente} · {proyecto.tipo}
+        {esCotizacion ? ` · Cotización ${proyecto.cot_estado}` : ''}
       </Text>
 
       {paso ? (
@@ -129,7 +181,7 @@ export default function DetalleProyecto() {
       ) : null}
 
       <View style={estilos.pasos}>
-        {pasos.map((p) => (
+        {(esCotizacion ? pasos.slice(0, 3) : pasos).map((p) => (
           <Link key={p.ruta} href={{ pathname: p.ruta, params: { proyecto: proyecto.id } }} asChild>
             <Pressable accessibilityRole="button" accessibilityLabel={`${p.titulo}. ${p.detalle}`} style={[tarjeta, estilos.paso]}>
               <View style={{ flex: 1 }}>
@@ -142,12 +194,23 @@ export default function DetalleProyecto() {
         ))}
       </View>
 
-      <Etiqueta>Estado</Etiqueta>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={estilos.chips}>
-        {ESTADOS.map((e) => (
-          <Chip key={e} borde texto={e} activo={e === proyecto.estado} onPress={() => elegirEstado(e)} />
-        ))}
-      </ScrollView>
+      {esCotizacion ? (
+        <>
+          <Etiqueta>Respuesta del cliente</Etiqueta>
+          <View style={estilos.chips}>
+            {(['borrador', 'enviada', 'rechazada'] as const).map((e) => (
+              <Chip key={e} borde texto={e} activo={e === proyecto.cot_estado} onPress={() => elegirRespuesta(e)} />
+            ))}
+          </View>
+          {resumen && resumen.lineas > 0 && paso?.destino !== 'aprobar' ? <Boton texto="Aprobar y pasar a proyecto" onPress={confirmarAprobar} /> : null}
+        </>
+      ) : (
+        <Boton
+          tipo="secundario"
+          texto={proyecto.estado === 'cerrado' ? 'Reabrir proyecto' : 'Cerrar proyecto'}
+          onPress={() => (proyecto.estado === 'cerrado' ? reabrir() : elegirEstado('cerrado'))}
+        />
+      )}
 
       <Etiqueta>Prioridad</Etiqueta>
       <View style={estilos.chips}>
@@ -156,8 +219,8 @@ export default function DetalleProyecto() {
         ))}
       </View>
 
-      <Boton tipo="secundario" texto="Duplicar proyecto" onPress={duplicar} />
-      <Boton tipo="peligro" texto="Eliminar proyecto" onPress={confirmarEliminar} />
+      <Boton tipo="secundario" texto={esCotizacion ? 'Duplicar cotización' : 'Duplicar proyecto'} onPress={duplicar} />
+      <Boton tipo="peligro" texto={esCotizacion ? 'Eliminar cotización' : 'Eliminar proyecto'} onPress={confirmarEliminar} />
       <Text style={estilos.creado}>Creado: {formatearFecha(proyecto.creado_en)}</Text>
     </ScrollView>
     <BotonDictado proyectoId={proyecto.id} />

@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import { AvisoEjecucion, useEjecucionIniciada } from '@/bloqueo';
 import { Link, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
@@ -7,11 +8,12 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { intentar } from '@/accion';
 import { Alert } from '@/alert';
 import { listarCatalogo, type Producto } from '@/db/catalogo';
-import { listarLineas, obtenerOpciones } from '@/db/cotizacion';
+import { listarLineas, listarTrabajos, obtenerOpciones } from '@/db/cotizacion';
 import { crearPartida, eliminarPartida, listarPartidas, type Partida } from '@/db/levantamiento';
 import { formatear, moneda, precioParaProyecto, totales } from '@/dinero';
-import { guardarFoto, uriFoto } from '@/fotos';
+import { borrarFotos, guardarFoto, uriFoto } from '@/fotos';
 import { FilaDeslizable } from '@/deslizar';
+import { SelectorTrabajo } from '@/trabajosUi';
 import { BotonDictado } from '@/dictado';
 import { color } from '@/tema';
 import { Boton, Campo, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
@@ -21,7 +23,10 @@ const MAX_SUGERENCIAS = 12;
 export default function Levantamiento() {
   const db = useSQLiteContext();
   const proyectoId = Number(useLocalSearchParams<{ proyecto: string }>().proyecto);
+  const aprobada = useEjecucionIniciada(proyectoId);
   const [partidas, setPartidas] = useState<Partida[]>([]);
+  const [trabajos, setTrabajos] = useState<string[]>([]);
+  const [trabajo, setTrabajo] = useState<string | undefined>(undefined); // undefined = Auto
   const [inventario, setInventario] = useState<Producto[]>([]);
   const [total, setTotal] = useState(0);
   const [opciones, setOpciones] = useState({ nivel: 1, con_itbis: false, impuesto_pct: 18 });
@@ -33,11 +38,18 @@ export default function Levantamiento() {
   const [foto, setFoto] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
-    setPartidas(await listarPartidas(db, proyectoId));
-    setInventario(await listarCatalogo(db));
-    const op = await obtenerOpciones(db, proyectoId);
+    const [ps, ts, inv, op, lineas] = await Promise.all([
+      listarPartidas(db, proyectoId),
+      listarTrabajos(db, proyectoId),
+      listarCatalogo(db),
+      obtenerOpciones(db, proyectoId),
+      listarLineas(db, proyectoId),
+    ]);
+    setPartidas(ps);
+    setTrabajos(ts);
+    setInventario(inv);
     setOpciones(op);
-    setTotal(totales(await listarLineas(db, proyectoId), op.impuesto_pct, op.con_itbis).total);
+    setTotal(totales(lineas, op.impuesto_pct, op.con_itbis, op.descuento_pct).total);
   }, [db, proyectoId]);
   useFocusEffect(
     useCallback(() => {
@@ -82,7 +94,7 @@ export default function Levantamiento() {
       await crearPartida(
         db,
         proyectoId,
-        { area: area.trim(), equipo: p.nombre, cantidad: n, notas: null, foto_uri: null },
+        { area: area.trim(), equipo: p.nombre, cantidad: n, notas: null, foto_uri: null, trabajo },
         p,
         precioParaProyecto(p, opciones.nivel, opciones.con_itbis, opciones.impuesto_pct)
       );
@@ -110,6 +122,7 @@ export default function Levantamiento() {
       cantidad: n,
       notas: notas.trim() || null,
       foto_uri: foto ? guardarFoto(foto) : null,
+      trabajo,
     });
     setEquipo('');
     setCantidad('1');
@@ -126,11 +139,14 @@ export default function Levantamiento() {
         style: 'destructive',
         onPress: async () => {
           await eliminarPartida(db, p.id);
+          borrarFotos([p.foto_uri]);
           cargar();
         },
       },
     ]);
   }
+
+  if (aprobada && proyectoId !== null) return <AvisoEjecucion proyectoId={proyectoId} />;
 
   return (
     <View style={{ flex: 1 }}>
@@ -150,6 +166,7 @@ export default function Levantamiento() {
           <Campo style={{ flex: 1 }} placeholder="Área (ej. Entrada, Bodega)" value={area} onChangeText={setArea} />
           <Campo style={estilos.cantidad} placeholder="Cant." keyboardType="number-pad" value={cantidad} onChangeText={setCantidad} />
         </View>
+        <SelectorTrabajo trabajos={trabajos} valor={trabajo} onElegir={setTrabajo} />
       </Tarjeta>
 
       <Tarjeta>
@@ -202,7 +219,8 @@ export default function Levantamiento() {
             <View style={estilos.area}>
               <View style={{ flex: 1 }}>
                 <Text style={estilos.detalle}>
-                  {p.area} · {p.cantidad}
+                  {p.area}
+                  {p.trabajo ? ` · ${p.trabajo}` : ''} · {p.cantidad}
                 </Text>
                 {p.notas ? <Text style={estilos.detalle}>{p.notas}</Text> : null}
               </View>

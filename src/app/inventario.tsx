@@ -109,7 +109,7 @@ const estilos = StyleSheet.create({
   detalle: { fontSize: 13, color: color.suave },
   caracteristicas: { fontSize: 13, fontWeight: '600', color: color.primario },
   precios: { fontSize: 14, fontWeight: '600', color: color.texto, marginTop: 2 },
-  bajo: { fontSize: 13, color: '#c0262d', fontWeight: '600' },
+  bajo: { fontSize: 13, color: color.peligro, fontWeight: '600' },
   vacio: { textAlign: 'center', color: color.suave, marginVertical: 24 },
   pista: { fontSize: 12, color: color.suave, textAlign: 'center', marginTop: 8 },
 });

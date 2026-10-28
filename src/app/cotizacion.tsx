@@ -3,29 +3,35 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
+import { AvisoEjecucion, useEjecucionIniciada } from '@/bloqueo';
 import { intentar } from '@/accion';
 import { Alert } from '@/alert';
 import { listarCatalogo, type Producto, type TipoItem } from '@/db/catalogo';
 import {
-  actualizarDescuento,
   actualizarPrecio,
   aplicarPrecios,
   contarPartidasPendientes,
   crearLinea,
   eliminarLinea,
+  guardarDescuentoGlobal,
   guardarImpuesto,
   importarDelLevantamiento,
   listarLineas,
+  listarTrabajos,
+  moverLinea,
   obtenerOpciones,
   type Linea,
 } from '@/db/cotizacion';
+import { aplicarKit, eliminarKit, guardarKit, listarKits, type Kit } from '@/db/kits';
 import { listarAreas } from '@/db/levantamiento';
-import { guardarCondiciones, obtenerCondiciones, obtenerProyecto } from '@/db/proyectos';
+import { guardarCondiciones, marcarEnviada, obtenerCondiciones, obtenerProyecto } from '@/db/proyectos';
 import { aCentavos, fechaEn, formatear, importe, ITBIS_PCT, moneda, precioParaProyecto, totales } from '@/dinero';
 import { negocioParaPdf, previsualizar } from '@/pdf';
 import { FilaDeslizable } from '@/deslizar';
 import { BotonDictado } from '@/dictado';
 import { detalleArticulo } from '@/nomenclatura';
+import { agruparPorTrabajo, etiquetaTrabajo, hayVariosTrabajos, limpiarTrabajo, trabajoAuto } from '@/trabajos';
+import { elegirTrabajoDe, SelectorTrabajo } from '@/trabajosUi';
 import { color } from '@/tema';
 import { Boton, Campo, Chip, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
 
@@ -39,12 +45,18 @@ const MAX_SUGERENCIAS = 8;
 export default function Cotizacion() {
   const db = useSQLiteContext();
   const proyectoId = Number(useLocalSearchParams<{ proyecto: string }>().proyecto);
+  const aprobada = useEjecucionIniciada(proyectoId);
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [inventario, setInventario] = useState<Producto[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [pendientes, setPendientes] = useState(0);
   const [precios, setPrecios] = useState<Record<number, string>>({});
-  const [descuentos, setDescuentos] = useState<Record<number, string>>({});
+  const [kits, setKits] = useState<Kit[]>([]);
+  const [trabajos, setTrabajos] = useState<string[]>([]);
+  const [trabajo, setTrabajo] = useState<string | undefined>(undefined); // undefined = Auto
+  const [nombreKit, setNombreKit] = useState('');
+  const [descuento, setDescuento] = useState('');
+  const [descuentoGuardado, setDescuentoGuardado] = useState(0);
   const [impuesto, setImpuesto] = useState('0');
   const [impuestoGuardado, setImpuestoGuardado] = useState(0);
   const [condiciones, setCondiciones] = useState('');
@@ -57,11 +69,11 @@ export default function Cotizacion() {
 
   const cargar = useCallback(
     () =>
-      listarLineas(db, proyectoId).then(async (ls) => {
+      Promise.all([listarLineas(db, proyectoId), listarTrabajos(db, proyectoId), contarPartidasPendientes(db, proyectoId)]).then(([ls, ts, pendientes]) => {
         setLineas(ls);
+        setTrabajos(ts);
         setPrecios(Object.fromEntries(ls.map((l) => [l.id, l.precio_cts ? String(l.precio_cts / 100) : ''])));
-        setDescuentos(Object.fromEntries(ls.map((l) => [l.id, l.descuento_pct ? String(l.descuento_pct) : ''])));
-        setPendientes(await contarPartidasPendientes(db, proyectoId));
+        setPendientes(pendientes);
       }),
     [db, proyectoId]
   );
@@ -69,20 +81,29 @@ export default function Cotizacion() {
   useEffect(() => {
     cargar();
     listarCatalogo(db).then(setInventario);
+    listarKits(db).then(setKits);
     obtenerOpciones(db, proyectoId).then((o) => {
       setImpuesto(String(o.impuesto_pct));
       setImpuestoGuardado(o.impuesto_pct);
       setNivel(o.nivel);
       setConItbis(o.con_itbis);
+      setDescuento(o.descuento_pct ? String(o.descuento_pct) : '');
+      setDescuentoGuardado(o.descuento_pct);
     });
     obtenerCondiciones(db, proyectoId).then(setCondiciones);
   }, [cargar, db, proyectoId]);
 
   const pct = Number(impuesto) >= 0 && Number.isFinite(Number(impuesto)) ? Number(impuesto) : 0;
-  const t = totales(lineas, pct, conItbis);
+  const descEscrito = Number(descuento.replace(',', '.'));
+  const descPct = descEscrito > 0 && descEscrito <= 100 ? descEscrito : 0;
+  const t = totales(lineas, pct, conItbis, descPct);
   // la ganancia se mide sin ITBIS: el costo no lo lleva y el impuesto no es tuyo
   const ganancia = lineas.reduce((s, l) => s + (conItbis ? importe(l) / (1 + pct / 100) : importe(l)) - l.cantidad * l.costo_cts, 0);
   const hayCostos = lineas.some((l) => l.costo_cts > 0);
+  // con varios trabajos, una sección por trabajo; con uno solo, Equipos y Servicios como siempre
+  const secciones = hayVariosTrabajos(lineas)
+    ? agruparPorTrabajo(lineas).map((g) => ({ clave: `t${g.trabajo ?? ''}`, titulo: etiquetaTrabajo(g.trabajo), delTipo: g.lineas }))
+    : SECCIONES.map((s) => ({ clave: s.tipo, titulo: s.titulo, delTipo: lineas.filter((l) => l.tipo === s.tipo) }));
   const texto = busqueda.trim().toLowerCase();
   const sugerencias = texto
     ? inventario
@@ -97,15 +118,15 @@ export default function Cotizacion() {
     setLineas((ls) => ls.map((x) => (x.id === l.id ? { ...x, precio_cts: cts } : x)));
   }
 
-  async function guardarDescuento(l: Linea) {
-    const texto = (descuentos[l.id] ?? '').trim();
+  async function guardarDescuento() {
+    const texto = descuento.trim();
     const d = texto === '' ? 0 : Number(texto.replace(',', '.'));
     if (!Number.isFinite(d) || d < 0 || d > 100) {
-      Alert.alert('Descuento inválido', 'Escribe un porcentaje entre 0 y 100.');
-      return cargar();
+      Alert.alert('Descuento inválido', 'Escribe un porcentaje entre 0 y 100, o déjalo vacío.');
+      return setDescuento(descuentoGuardado ? String(descuentoGuardado) : '');
     }
-    await actualizarDescuento(db, l.id, d);
-    setLineas((ls) => ls.map((x) => (x.id === l.id ? { ...x, descuento_pct: d } : x)));
+    await guardarDescuentoGlobal(db, proyectoId, d);
+    setDescuentoGuardado(d);
   }
 
   async function agregar() {
@@ -114,7 +135,7 @@ export default function Cotizacion() {
     if (!descripcion.trim() || !Number.isInteger(n) || n < 1 || cts === null) {
       return Alert.alert('Faltan datos', 'Escribe la descripción, una cantidad entera mayor a 0 y el precio.');
     }
-    await crearLinea(db, proyectoId, { descripcion: descripcion.trim(), cantidad: n, precio_cts: cts, tipo });
+    await crearLinea(db, proyectoId, { descripcion: descripcion.trim(), cantidad: n, precio_cts: cts, tipo, trabajo: limpiarTrabajo(trabajo) });
     setDescripcion('');
     setCantidad('1');
     setPrecio('');
@@ -130,6 +151,7 @@ export default function Cotizacion() {
       costo_cts: p.costo_cts,
       item_id: p.id,
       detalle: detalleArticulo(p),
+      trabajo: trabajo === undefined ? trabajoAuto(p.categoria) : limpiarTrabajo(trabajo),
     });
     setBusqueda('');
     cargar();
@@ -146,6 +168,38 @@ export default function Cotizacion() {
     return insertar(p);
   }
 
+  async function pasarATrabajo(l: Linea, destino: string | null) {
+    await moverLinea(db, l.id, destino);
+    cargar();
+  }
+
+  async function usarKit(k: Kit) {
+    await aplicarKit(db, k.id, proyectoId);
+    cargar();
+  }
+
+  async function nuevoKit() {
+    if (!(await guardarKit(db, proyectoId, nombreKit))) {
+      return Alert.alert('No se guardó', 'Escribe un nombre para el kit y agrega al menos una línea a la cotización.');
+    }
+    setNombreKit('');
+    setKits(await listarKits(db));
+  }
+
+  function confirmarEliminarKit(k: Kit) {
+    Alert.alert('Eliminar kit', `¿Eliminar el kit "${k.nombre}"? Las cotizaciones donde ya lo usaste no cambian.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: async () => {
+          await eliminarKit(db, k.id);
+          setKits(await listarKits(db));
+        },
+      },
+    ]);
+  }
+
   async function pdf() {
     const p = await obtenerProyecto(db, proyectoId);
     if (!p || lineas.length === 0) return Alert.alert('Nada que compartir', 'Agrega líneas a la cotización primero.');
@@ -159,8 +213,10 @@ export default function Cotizacion() {
       lineas,
       condiciones,
       preciosConItbis: conItbis,
+      impuestoPct: pct,
+      descuentoPct: descPct,
       ...t,
-    });
+    }, () => marcarEnviada(db, proyectoId)); // compartirla la deja como enviada
   }
 
   /** Cambia nivel y/o modo de ITBIS (con impuesto `pctNuevo`) y reprecia las líneas del inventario, con confirmación. */
@@ -202,6 +258,8 @@ export default function Cotizacion() {
     ]);
   }
 
+  if (aprobada && proyectoId !== null) return <AvisoEjecucion proyectoId={proyectoId} />;
+
   return (
     <View style={{ flex: 1 }}>
     <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
@@ -223,11 +281,10 @@ export default function Cotizacion() {
         </Text>
       )}
 
-      {SECCIONES.map(({ tipo: tipoSeccion, titulo }) => {
-        const delTipo = lineas.filter((l) => l.tipo === tipoSeccion);
+      {secciones.map(({ clave, titulo, delTipo }) => {
         if (delTipo.length === 0) return null;
         return (
-          <View key={tipoSeccion} style={{ gap: 10 }}>
+          <View key={clave} style={{ gap: 10 }}>
             <View style={estilos.dos}>
               <Etiqueta>{titulo}</Etiqueta>
               <Text style={estilos.detalle}>{moneda(delTipo.reduce((s, l) => s + importe(l), 0))}</Text>
@@ -245,24 +302,16 @@ export default function Cotizacion() {
                     {l.descuento_pct ? ` − ${l.descuento_pct}%` : ''}
                     {l.precio_cts === 0 ? ' · falta el precio' : ''}
                   </Text>
-                  <View style={estilos.dos}>
-                    <Campo
-                      style={estilos.mitad}
-                      placeholder="Precio"
-                      keyboardType="decimal-pad"
-                      value={precios[l.id] ?? ''}
-                      onChangeText={(v) => setPrecios((p) => ({ ...p, [l.id]: v }))}
-                      onEndEditing={() => intentar(() => guardarPrecio(l))}
-                    />
-                    <Campo
-                      style={estilos.mitad}
-                      placeholder="Desc. %"
-                      keyboardType="decimal-pad"
-                      value={descuentos[l.id] ?? ''}
-                      onChangeText={(v) => setDescuentos((p) => ({ ...p, [l.id]: v }))}
-                      onEndEditing={() => intentar(() => guardarDescuento(l))}
-                    />
-                  </View>
+                  <Campo
+                    placeholder="Precio"
+                    keyboardType="decimal-pad"
+                    value={precios[l.id] ?? ''}
+                    onChangeText={(v) => setPrecios((p) => ({ ...p, [l.id]: v }))}
+                    onEndEditing={() => intentar(() => guardarPrecio(l))}
+                  />
+                  <Pressable accessibilityRole="button" hitSlop={8} style={estilos.moverTrabajo} onPress={() => elegirTrabajoDe(l.descripcion, trabajos, l.trabajo, (t) => intentar(() => pasarATrabajo(l, t)))}>
+                    <Text style={estilos.detalle}>Trabajo: {etiquetaTrabajo(l.trabajo)} ›</Text>
+                  </Pressable>
                 </Tarjeta>
               </FilaDeslizable>
             ))}
@@ -272,6 +321,7 @@ export default function Cotizacion() {
       {lineas.length > 0 && <Text style={estilos.pista}>Desliza una línea hacia la izquierda para eliminarla.</Text>}
 
       <Tarjeta>
+        <SelectorTrabajo trabajos={trabajos} valor={trabajo} onElegir={setTrabajo} />
         <Etiqueta>Buscar en el inventario (nombre o código)</Etiqueta>
         <Campo placeholder="Ej. turret 4MPX o CCTV-0001" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
         {texto && sugerencias.length === 0 ? <Text style={estilos.detalle}>Sin resultados.</Text> : null}
@@ -317,6 +367,28 @@ export default function Cotizacion() {
       </Tarjeta>
 
       <Tarjeta>
+        <Etiqueta>Kits (paquetes que se agregan de una vez)</Etiqueta>
+        {kits.length === 0 ? <Text style={estilos.detalle}>Arma la cotización una vez, ponle un nombre abajo y queda como kit para las siguientes.</Text> : null}
+        {kits.map((k) => (
+          <FilaDeslizable key={k.id} onAccion={() => confirmarEliminarKit(k)}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Agregar el kit ${k.nombre}`} style={estilos.sugerencia} onPress={() => intentar(() => usarKit(k))}>
+              <View style={{ flex: 1 }}>
+                <Text style={estilos.nombre}>{k.nombre}</Text>
+                <Text style={estilos.detalle}>{k.lineas} {k.lineas === 1 ? 'línea' : 'líneas'}</Text>
+              </View>
+              <Text style={estilos.importe}>+ Agregar</Text>
+            </Pressable>
+          </FilaDeslizable>
+        ))}
+        {lineas.length > 0 ? (
+          <View style={estilos.dos}>
+            <Campo style={estilos.mitad} placeholder="Nombre para guardar como kit" value={nombreKit} onChangeText={setNombreKit} />
+            <Chip borde texto="Guardar kit" onPress={() => intentar(nuevoKit)} />
+          </View>
+        ) : null}
+      </Tarjeta>
+
+      <Tarjeta>
         <Etiqueta>Agregar línea</Etiqueta>
         <View style={estilos.chips}>
           {SECCIONES.map((s) => (
@@ -342,7 +414,19 @@ export default function Cotizacion() {
             onEndEditing={() => intentar(terminarImpuesto)}
           />
         </View>
+        <View style={estilos.dos}>
+          <Text style={estilos.nombre}>Descuento global (%), opcional</Text>
+          <Campo
+            style={estilos.impuesto}
+            placeholder="0"
+            keyboardType="decimal-pad"
+            value={descuento}
+            onChangeText={setDescuento}
+            onEndEditing={() => intentar(guardarDescuento)}
+          />
+        </View>
         <Text style={estilos.detalle}>Subtotal{conItbis ? ' (sin ITBIS)' : ''}: {moneda(t.subtotal)}</Text>
+        {t.descuento > 0 ? <Text style={estilos.detalle}>Descuento ({descPct}%): −{moneda(t.descuento)}</Text> : null}
         <Text style={estilos.detalle}>Impuesto: {moneda(t.impuesto)}</Text>
         <Text style={estilos.total}>Total: {moneda(t.total)}</Text>
         {hayCostos ? <Text style={[estilos.detalle, { color: color.ok }]}>Ganancia estimada (solo tú la ves): {moneda(Math.round(ganancia))}</Text> : null}
@@ -374,6 +458,7 @@ const estilos = StyleSheet.create({
   detalle: { fontSize: 14, color: color.suave },
   aviso: { fontSize: 13, color: color.alerta },
   total: { fontSize: 22, fontWeight: '700', color: color.texto },
+  moverTrabajo: { minHeight: 32, justifyContent: 'center' },
   pista: { fontSize: 12, color: color.suave, textAlign: 'center' },
   vacio: { textAlign: 'center', color: color.suave },
   chips: { gap: 8, flexDirection: 'row', flexWrap: 'wrap' },

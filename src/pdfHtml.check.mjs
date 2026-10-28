@@ -9,7 +9,7 @@ import { join } from 'node:path';
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
 const tmp = mkdtempSync(join(tmpdir(), 'pdfhtml-'));
-for (const f of ['pdfHtml', 'dinero', 'marca']) {
+for (const f of ['pdfHtml', 'dinero', 'marca', 'trabajos']) {
   const fuente = readFileSync(new URL(`./${f}.ts`, import.meta.url), 'utf8');
   writeFileSync(join(tmp, `${f}.js`), ts.transpileModule(fuente, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText);
 }
@@ -39,10 +39,39 @@ assert.ok(!sin.includes('<img') && !sin.includes('class="lema"'));
 assert.ok(sin.includes(COLOR_BASE) && sin.includes('Cotización') && sin.includes('#12'));
 assert.ok(sin.includes('6,785.00') && sin.includes('Subtotal equipos'), 'la cotización sí muestra precios y subtotales');
 
+// --- lo mínimo: sin bloque de proyecto, sin pie decorativo y sin columna de descuento por línea
+assert.ok(!sin.includes('>Proyecto<') && !sin.includes('class="pie"') && !sin.includes('Desc.'));
+assert.ok(sin.includes('<th class="n">ITBIS</th>'), 'la columna de descuento se cambia por el ITBIS');
+
+// --- ITBIS por línea (precios sin ITBIS: 18 % encima) y descuento global al final
+const conItbis = htmlDocumento({ ...base, lineas: [{ descripcion: 'Cable', cantidad: 1, precio_cts: 100000 }], impuestoPct: 18, preciosConItbis: false });
+assert.ok(conItbis.includes('<td class="n">180.00</td>') && !conItbis.includes('Descuento'));
+const incluido = htmlDocumento({ ...base, lineas: [{ descripcion: 'Cable', cantidad: 1, precio_cts: 118000 }], impuestoPct: 18, preciosConItbis: true });
+assert.ok(incluido.includes('<td class="n">180.00</td>'), 'con ITBIS incluido, el ITBIS sale hacia atrás del importe');
+const conDescuento = htmlDocumento({ ...base, descuento: 10000, descuentoPct: 10 });
+assert.ok(conDescuento.includes('Descuento (10%)') && conDescuento.includes('−RD$ 100.00'));
+
+// --- varios trabajos en un proyecto: una sección por trabajo, cada una con su subtotal
+const casa = [
+  { descripcion: 'Cámara IP', cantidad: 2, precio_cts: 100000, tipo: 'equipo', trabajo: 'CCTV' },
+  { descripcion: 'Panel de alarma', cantidad: 1, precio_cts: 250000, tipo: 'equipo', trabajo: 'Alarma' },
+  { descripcion: 'Sensor', cantidad: 3, precio_cts: 20000, tipo: 'equipo', trabajo: 'Alarma' },
+  { descripcion: 'Instalación', cantidad: 1, precio_cts: 80000, tipo: 'servicio', trabajo: null },
+];
+const porTrabajo = htmlDocumento({ ...base, lineas: casa });
+assert.ok(porTrabajo.indexOf('>CCTV<') < porTrabajo.indexOf('>Alarma<') && porTrabajo.includes('>General<'));
+assert.ok(porTrabajo.includes('Subtotal cctv') && porTrabajo.includes('2,000.00'), 'subtotal de CCTV: 2 × 1,000.00');
+assert.ok(porTrabajo.includes('Subtotal alarma') && porTrabajo.includes('3,100.00'), 'subtotal de Alarma: 2,500.00 + 3 × 200.00');
+assert.ok(!porTrabajo.includes('Mano de obra y servicios'), 'con trabajos ya no se divide en equipos y servicios');
+const propTrabajos = htmlDocumento({ ...base, lineas: casa, sinPrecios: true });
+assert.ok(propTrabajos.includes('>Alarma<') && !propTrabajos.includes('Subtotal'), 'la propuesta también separa por trabajo, sin precios');
+const unTrabajo = htmlDocumento({ ...base, lineas: casa.filter((l) => l.trabajo === 'CCTV') });
+assert.ok(!unTrabajo.includes('class="seccion"'), 'con un solo trabajo el documento se ve como siempre');
+
 // --- con perfil: nombre en texto si no hay logo, color y lema propios
 const conPerfil = htmlDocumento({ ...base, negocio: empresa({ color: '#1e5aa8', lema: 'Servicios de calidad' }) });
 assert.ok(conPerfil.includes('class="nombre-empresa">Mi Empresa') && !conPerfil.includes('<img'));
-assert.ok(conPerfil.includes('#1e5aa8') && conPerfil.includes('Servicios de calidad') && conPerfil.includes('RNC: 1-31-00000-0'));
+assert.ok(conPerfil.includes('#1e5aa8') && !conPerfil.includes('Servicios de calidad') && conPerfil.includes('RNC: 1-31-00000-0'));
 assert.ok(!conPerfil.includes(COLOR_BASE), 'con color propio no queda el color base');
 
 // --- con logo: va el logo (png o jpeg según el contenido) y el nombre pasa a los datos

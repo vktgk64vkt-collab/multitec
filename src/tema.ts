@@ -7,6 +7,21 @@ export const color = {
   borde: '#e6dccf',
   ok: '#12805c',
   alerta: '#b54708',
+  peligro: '#c0262d',
+  info: '#1d5fa8',
+};
+
+/** Un color por estado, igual en todas las pantallas. */
+export const colorEstado: Record<string, string> = {
+  borrador: color.suave,
+  enviada: color.info,
+  aprobada: color.ok,
+  rechazada: color.peligro,
+  levantamiento: color.suave,
+  cotizado: color.info,
+  'en ejecución': color.alerta,
+  facturado: color.primario,
+  cerrado: color.ok,
 };
 
 export const tarjeta = {

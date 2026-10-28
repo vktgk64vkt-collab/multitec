@@ -1,7 +1,7 @@
 /** "12.5" -> 1250. Devuelve null si no es un monto válido (>= 0). */
 export function aCentavos(texto: string): number | null {
-  const n = Number(texto.trim().replace(',', '.'));
-  return texto.trim() !== '' && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
+  const t = texto.trim();
+  return /^\d+([.,]\d+)?$/.test(t) ? Math.round(Number(t.replace(',', '.')) * 100) : null;
 }
 
 export function formatear(centavos: number): string {
@@ -20,15 +20,26 @@ export function importe(i: Item): number {
 /**
  * Con `incluido` los precios de las líneas ya traen el impuesto: el total es la suma de las líneas
  * y el subtotal/impuesto se desglosan hacia atrás. Sin él, el impuesto se suma encima (modo anterior).
+ * `descuentoPct` es el descuento global del documento: se resta del subtotal (sin impuesto) y el ITBIS se calcula sobre lo que queda.
+ * Siempre se cumple subtotal - descuento + impuesto = total.
  */
-export function totales(items: Item[], impuestoPct: number, incluido = false) {
+export function totales(items: Item[], impuestoPct: number, incluido = false, descuentoPct = 0) {
   const suma = items.reduce((s, i) => s + importe(i), 0);
+  const quedan = (100 - descuentoPct) / 100;
   if (incluido) {
+    const total = Math.round(suma * quedan);
     const subtotal = Math.round(suma / (1 + impuestoPct / 100));
-    return { subtotal, impuesto: suma - subtotal, total: suma };
+    const neto = Math.round(total / (1 + impuestoPct / 100));
+    return { subtotal, descuento: subtotal - neto, impuesto: total - neto, total };
   }
-  const impuesto = Math.round((suma * impuestoPct) / 100);
-  return { subtotal: suma, impuesto, total: suma + impuesto };
+  const neto = Math.round(suma * quedan);
+  const impuesto = Math.round((neto * impuestoPct) / 100);
+  return { subtotal: suma, descuento: suma - neto, impuesto, total: neto + impuesto };
+}
+
+/** ITBIS contenido en el importe de una línea (para mostrarlo por línea en los documentos). */
+export function itbisLinea(importeCts: number, impuestoPct: number, incluido: boolean): number {
+  return incluido ? importeCts - Math.round(importeCts / (1 + impuestoPct / 100)) : Math.round((importeCts * impuestoPct) / 100);
 }
 
 export const ITBIS_PCT = 18;
@@ -89,7 +100,7 @@ export function fechaEn(dias: number, desde = new Date()): string {
   return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
 }
 
-type LineaAgrupable = { descripcion: string; detalle?: string | null; cantidad: number; precio_cts: number; descuento_pct?: number; tipo?: string };
+type LineaAgrupable = { descripcion: string; detalle?: string | null; cantidad: number; precio_cts: number; descuento_pct?: number; tipo?: string; trabajo?: string | null };
 
 /**
  * Junta las líneas repetidas (mismo texto, tipo, precio y descuento) sumando sus cantidades, para no repetir texto
@@ -102,6 +113,7 @@ export function agruparLineas<T extends LineaAgrupable>(lineas: T[], sinPrecios 
       l.descripcion.trim().toLowerCase(),
       (l.detalle ?? '').trim().toLowerCase(),
       l.tipo ?? 'equipo',
+      (l.trabajo ?? '').trim().toLowerCase(),
       sinPrecios ? '' : l.precio_cts,
       sinPrecios ? '' : (l.descuento_pct ?? 0),
     ].join('|');
@@ -122,4 +134,12 @@ export function sinArea(descripcion: string, areas: string[]): string {
     if (a.trim() && d.toLowerCase().endsWith(sufijo.toLowerCase())) return d.slice(0, d.length - sufijo.length).trimEnd();
   }
   return descripcion;
+}
+
+/** Días completos desde una fecha "AAAA-MM-DD[ hora]" hasta hoy (0 si es hoy o futura). null si no se reconoce la fecha. */
+export function diasDesde(texto: string | null | undefined, hoy = new Date()): number | null {
+  const m = texto?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const dia = (a: number, b: number, c: number) => Date.UTC(a, b, c);
+  return Math.max(0, Math.round((dia(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()) - dia(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) / 86_400_000));
 }

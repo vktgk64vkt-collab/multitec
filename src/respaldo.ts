@@ -1,22 +1,86 @@
-import { File, Paths } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
+import * as SecureStore from 'expo-secure-store';
 import * as Sharing from 'expo-sharing';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-import { EN_COTIZACION_SQL, VERSION_ACTUAL } from '@/db/migraciones';
+import { APROBADOS_SQL, EN_COTIZACION_SQL, VERSION_ACTUAL } from '@/db/migraciones';
 import { CODIGOS_SQL } from '@/nomenclatura';
 
 // Hijas primero al borrar, padres primero al insertar.
-const TABLAS = ['clientes', 'proyectos', 'levantamiento', 'cotizacion_items', 'bitacora', 'facturas', 'factura_items', 'pagos', 'catalogo', 'negocio', 'ejecucion_items', 'comprobantes'];
+const TABLAS = ['clientes', 'proyectos', 'levantamiento', 'cotizacion_items', 'bitacora', 'facturas', 'factura_items', 'pagos', 'catalogo', 'negocio', 'ejecucion_items', 'comprobantes', 'kits', 'kit_items'];
 
-/** Exporta la base de datos completa y abre la hoja de compartir. Las fotos NO van incluidas. */
+const CLAVE_ULTIMO = 'ultimo_respaldo';
+export const DIAS_ENTRE_RESPALDOS = 7;
+
+/** Días desde el último respaldo guardado, o null si nunca se ha hecho uno. */
+export async function diasSinRespaldo(): Promise<number | null> {
+  if (Platform.OS === 'web') return null;
+  try {
+    const t = await SecureStore.getItemAsync(CLAVE_ULTIMO);
+    return t ? Math.floor((Date.now() - Number(t)) / 86_400_000) : null;
+  } catch {
+    return null;
+  }
+}
+
+const anotarRespaldo = () => SecureStore.setItemAsync(CLAVE_ULTIMO, String(Date.now())).catch(() => undefined);
+
+const carpetaFotos = () => new Directory(Paths.document, 'fotos');
+
+/** "tekhnia-respaldo-2026-10-27-1504.db": con la hora, para no chocar con otro del mismo día. */
+const nombreRespaldo = () => `tekhnia-respaldo-${new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '')}.db`;
+
+/** Abre el selector de carpetas de iOS (Archivos, iCloud, el iPhone) y guarda ahí el respaldo. Devuelve false si cancelas. */
+export async function guardarRespaldoEn(db: SQLite.SQLiteDatabase) {
+  let carpeta: Directory;
+  try {
+    carpeta = await Directory.pickDirectoryAsync();
+  } catch (e) {
+    if (/cancel/i.test(String((e as { code?: string })?.code ?? '') + String(e))) return false;
+    throw e;
+  }
+  const nombre = nombreRespaldo();
+  const archivo = carpeta.createFile(nombre, 'application/octet-stream');
+  archivo.write(await db.serializeAsync());
+  // las fotos van en una carpeta junto al respaldo: sin ellas, al restaurar quedan imágenes en blanco
+  if (carpetaFotos().exists) {
+    const destino = carpeta.createDirectory(nombre.replace(/\.db$/, '') + '-fotos');
+    for (const f of carpetaFotos().list()) if (f instanceof File) f.copySync(destino);
+  }
+  await anotarRespaldo();
+  return true;
+}
+
+/** Exporta la base de datos completa y abre la hoja de compartir (AirDrop, correo...). Las fotos NO van incluidas. */
 export async function exportarRespaldo(db: SQLite.SQLiteDatabase) {
   if (Platform.OS === 'web' || !(await Sharing.isAvailableAsync())) return false;
-  const archivo = new File(Paths.cache, `tekhnia-respaldo-${new Date().toISOString().slice(0, 10)}.db`);
+  const archivo = new File(Paths.cache, nombreRespaldo());
   archivo.create({ overwrite: true });
   archivo.write(await db.serializeAsync());
   await Sharing.shareAsync(archivo.uri, { mimeType: 'application/octet-stream', UTI: 'public.data' });
+  await anotarRespaldo();
   return true;
+}
+
+/** Devuelve las fotos desde la carpeta "…-fotos" que se guardó junto al respaldo. Devuelve cuántas copió, o null si cancelas. */
+export async function restaurarFotos(): Promise<number | null> {
+  let origen: Directory;
+  try {
+    origen = await Directory.pickDirectoryAsync();
+  } catch (e) {
+    if (/cancel/i.test(String((e as { code?: string })?.code ?? '') + String(e))) return null;
+    throw e;
+  }
+  carpetaFotos().create({ idempotent: true, intermediates: true });
+  let n = 0;
+  for (const f of origen.list()) {
+    if (f instanceof File) {
+      f.copySync(carpetaFotos());
+      n++;
+    }
+  }
+  return n;
 }
 
 /** Reemplaza todos los datos por los del respaldo. Lanza si el archivo no es un respaldo compatible. */
@@ -57,6 +121,8 @@ export async function restaurarRespaldo(db: SQLite.SQLiteDatabase,uriArchivo: st
       if (v.user_version < 13) await db.execAsync(CODIGOS_SQL);
       // respaldo anterior a la suma de líneas: sin esto todas las partidas figurarían como pendientes y se duplicarían
       if (v.user_version < 16) await db.execAsync(EN_COTIZACION_SQL);
+      // respaldo anterior a cotización/proyecto: sin esto todos los proyectos figurarían como cotizaciones pendientes
+      if (v.user_version < 22) await db.execAsync(APROBADOS_SQL);
     });
   } finally {
     await db.execAsync('PRAGMA foreign_keys = ON');

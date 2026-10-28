@@ -68,3 +68,11 @@ const saldo = db.prepare('SELECT f.total_cts - COALESCE((SELECT SUM(monto_cts) F
 assert.ok(1000 > saldo); // registrarPago devuelve false
 
 console.log('facturas ok');
+
+// --- sin comprobante: el NCF 00000000 puede repetirse, cualquier otro no (índice parcial de la migración 21)
+const sinNcf = new DatabaseSync(':memory:');
+sinNcf.exec("CREATE TABLE facturas(id INTEGER PRIMARY KEY, proyecto_id INT, ncf TEXT NOT NULL); CREATE UNIQUE INDEX idx_facturas_ncf ON facturas (ncf) WHERE ncf <> '00000000'");
+for (const p of [1, 2, 3]) sinNcf.exec(`INSERT INTO facturas(proyecto_id, ncf) VALUES (${p}, '00000000')`);
+sinNcf.exec("INSERT INTO facturas(proyecto_id, ncf) VALUES (4, 'B0100000001')");
+assert.throws(() => sinNcf.exec("INSERT INTO facturas(proyecto_id, ncf) VALUES (5, 'B0100000001')"));
+console.log('sin ncf ok');

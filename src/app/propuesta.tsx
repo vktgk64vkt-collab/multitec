@@ -9,6 +9,7 @@ import { listarAreas } from '@/db/levantamiento';
 import {
   guardarCondiciones,
   guardarPropuestaIntro,
+  marcarEnviada,
   obtenerCondiciones,
   obtenerProyecto,
   obtenerPropuestaIntro,
@@ -36,7 +37,7 @@ export default function Propuesta() {
     listarLineas(db, proyectoId).then(async (ls) => {
       setLineas(ls);
       const op = await obtenerOpciones(db, proyectoId);
-      setTotal(totales(ls, op.impuesto_pct, op.con_itbis).total);
+      setTotal(totales(ls, op.impuesto_pct, op.con_itbis, op.descuento_pct).total);
     });
     obtenerPropuestaIntro(db, proyectoId).then(setIntro);
     obtenerCondiciones(db, proyectoId).then(setCondiciones);
@@ -59,7 +60,7 @@ export default function Propuesta() {
       subtotal: 0,
       impuesto: 0,
       total,
-    });
+    }, () => marcarEnviada(db, proyectoId)); // compartirla la deja como enviada
   }
 
   return (

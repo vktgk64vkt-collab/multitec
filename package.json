@@ -21,13 +21,10 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.0",
-    "react-native-gesture-handler": "~3.3.0",
-    "react-native-reanimated": "4.7.1",
     "react-native-safe-area-context": "~5.10.1",
     "react-native-screens": "~4.30.0",
     "react-native-web": "^0.21.4",
-    "react-native-webview": "14.0.1",
-    "react-native-worklets": "0.13.0"
+    "react-native-webview": "14.0.1"
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
@@ -41,7 +38,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "pruebas": "node --no-warnings --experimental-strip-types src/dinero.check.mjs && node --no-warnings --experimental-strip-types src/nomenclatura.check.mjs && node --no-warnings --experimental-strip-types src/contacto.check.mjs && node --no-warnings --experimental-strip-types src/db/migraciones.check.mjs && node --no-warnings --experimental-strip-types src/db/flujo.check.mjs && node --no-warnings --experimental-strip-types src/db/codigos.check.mjs && node --no-warnings --experimental-strip-types src/db/facturas.check.mjs && node --no-warnings --experimental-strip-types src/db/duplicados.check.mjs && node --no-warnings --experimental-strip-types src/pdfHtml.check.mjs && node --no-warnings --experimental-strip-types src/pedido.check.mjs && node --no-warnings --experimental-strip-types src/flujo.check.mjs && node --no-warnings --experimental-strip-types src/db/proyectos.check.mjs && node --no-warnings --experimental-strip-types src/ejecucion.check.mjs && node --no-warnings --experimental-strip-types src/db/ejecucion.check.mjs",
+    "pruebas": "node --no-warnings --experimental-strip-types src/dinero.check.mjs && node --no-warnings --experimental-strip-types src/nomenclatura.check.mjs && node --no-warnings --experimental-strip-types src/contacto.check.mjs && node --no-warnings --experimental-strip-types src/db/migraciones.check.mjs && node --no-warnings --experimental-strip-types src/db/flujo.check.mjs && node --no-warnings --experimental-strip-types src/db/codigos.check.mjs && node --no-warnings --experimental-strip-types src/db/facturas.check.mjs && node --no-warnings --experimental-strip-types src/db/duplicados.check.mjs && node --no-warnings --experimental-strip-types src/pdfHtml.check.mjs && node --no-warnings --experimental-strip-types src/pedido.check.mjs && node --no-warnings --experimental-strip-types src/flujo.check.mjs && node --no-warnings --experimental-strip-types src/db/proyectos.check.mjs && node --no-warnings --experimental-strip-types src/ejecucion.check.mjs && node --no-warnings --experimental-strip-types src/db/ejecucion.check.mjs && node --no-warnings --experimental-strip-types src/ncf.check.mjs && node --no-warnings --experimental-strip-types src/trabajos.check.mjs && node --no-warnings --experimental-strip-types src/db/real.check.mjs",
     "check": "tsc --noEmit && expo lint && npm run pruebas"
   },
   "private": true

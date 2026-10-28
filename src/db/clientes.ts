@@ -37,6 +37,14 @@ export async function crearCliente(db: SQLiteDatabase, d: DatosCliente) {
   return r.lastInsertRowId;
 }
 
+/** El cliente con ese nombre (sin importar mayúsculas ni espacios de más) o uno nuevo con solo el nombre. Devuelve su id. */
+export async function buscarOCrearCliente(db: SQLiteDatabase, nombre: string): Promise<number> {
+  const limpio = nombre.trim().replace(/\s+/g, ' ');
+  const r = await db.getFirstAsync<{ id: number }>('SELECT id FROM clientes WHERE lower(trim(nombre)) = lower(?) ORDER BY id LIMIT 1', limpio);
+  if (r) return r.id;
+  return crearCliente(db, { nombre: limpio, empresa: null, telefono: null, correo: null, direccion: null, id_fiscal: null, notas: null });
+}
+
 export function actualizarCliente(db: SQLiteDatabase, id: number, d: DatosCliente) {
   return db.runAsync(
     `UPDATE clientes SET nombre = ?, empresa = ?, telefono = ?, correo = ?,

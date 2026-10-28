@@ -12,6 +12,20 @@ export function guardarFoto(uri: string): string {
   return `fotos/${nombre}`;
 }
 
+/** Borra del teléfono los archivos de estas fotos (rutas guardadas). Un archivo que ya no está no es un error. */
+export function borrarFotos(guardadas: (string | null | undefined)[]) {
+  if (Platform.OS === 'web') return;
+  for (const g of guardadas) {
+    if (!g || g.includes(':')) continue;
+    try {
+      const f = new File(Paths.document, g);
+      if (f.exists) f.delete();
+    } catch {
+      // se queda el archivo; no vale la pena fallar por eso
+    }
+  }
+}
+
 export function uriFoto(guardada: string): string {
   return guardada.includes(':') ? guardada : new File(Paths.document, guardada).uri;
 }

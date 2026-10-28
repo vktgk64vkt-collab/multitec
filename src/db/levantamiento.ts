@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { Producto } from './catalogo';
 import { detalleArticulo } from '../nomenclatura';
+import { limpiarTrabajo, trabajoAuto } from '../trabajos';
 import { crearLinea } from './cotizacion';
 
 export interface Partida {
@@ -14,9 +15,11 @@ export interface Partida {
   foto_uri: string | null;
   item_id: number | null;
   en_cotizacion: number; // 1 = su cantidad ya está sumada en la cotización
+  trabajo: string | null; // alarma, cámaras, portón...; null = General
 }
 
-export type DatosPartida = Omit<Partida, 'id' | 'proyecto_id' | 'item_id' | 'en_cotizacion'>;
+/** `trabajo` sin indicar = el que le toca al artículo por su categoría; con texto = ese; con '' = General. */
+export type DatosPartida = Omit<Partida, 'id' | 'proyecto_id' | 'item_id' | 'en_cotizacion' | 'trabajo'> & { trabajo?: string | null };
 
 export function listarPartidas(db: SQLiteDatabase, proyectoId: number) {
   return db.getAllAsync<Partida>('SELECT * FROM levantamiento WHERE proyecto_id = ? ORDER BY id DESC', proyectoId);
@@ -29,24 +32,25 @@ export function listarPartidas(db: SQLiteDatabase, proyectoId: number) {
  * Así la cotización avanza mientras se hace el levantamiento.
  */
 export function crearPartida(db: SQLiteDatabase, proyectoId: number, d: DatosPartida, item?: Producto, precioCts = item?.precio_cts ?? 0) {
+  const trabajo = d.trabajo === undefined ? trabajoAuto(item?.categoria) : limpiarTrabajo(d.trabajo);
   return db.withTransactionAsync(async () => {
     if (!item) {
       await db.runAsync(
-        'INSERT INTO levantamiento (proyecto_id, area, equipo, cantidad, notas, foto_uri, item_id, en_cotizacion) VALUES (?, ?, ?, ?, ?, ?, NULL, 0)',
-        proyectoId, d.area, d.equipo, d.cantidad, d.notas, d.foto_uri
+        'INSERT INTO levantamiento (proyecto_id, area, equipo, cantidad, notas, foto_uri, item_id, en_cotizacion, trabajo) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, ?)',
+        proyectoId, d.area, d.equipo, d.cantidad, d.notas, d.foto_uri, trabajo
       );
       return;
     }
     const misma = await db.getFirstAsync<{ id: number }>(
-      'SELECT id FROM levantamiento WHERE proyecto_id = ? AND item_id = ? AND lower(trim(area)) = lower(trim(?)) ORDER BY id LIMIT 1',
-      proyectoId, item.id, d.area
+      "SELECT id FROM levantamiento WHERE proyecto_id = ? AND item_id = ? AND lower(trim(area)) = lower(trim(?)) AND IFNULL(trabajo, '') = ? ORDER BY id LIMIT 1",
+      proyectoId, item.id, d.area, trabajo ?? ''
     );
     if (misma) {
       await db.runAsync('UPDATE levantamiento SET cantidad = cantidad + ? WHERE id = ?', d.cantidad, misma.id);
     } else {
       await db.runAsync(
-        'INSERT INTO levantamiento (proyecto_id, area, equipo, cantidad, notas, foto_uri, item_id, en_cotizacion) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
-        proyectoId, d.area, d.equipo, d.cantidad, d.notas, d.foto_uri, item.id
+        'INSERT INTO levantamiento (proyecto_id, area, equipo, cantidad, notas, foto_uri, item_id, en_cotizacion, trabajo) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)',
+        proyectoId, d.area, d.equipo, d.cantidad, d.notas, d.foto_uri, item.id, trabajo
       );
     }
     await crearLinea(db, proyectoId, {
@@ -57,6 +61,7 @@ export function crearPartida(db: SQLiteDatabase, proyectoId: number, d: DatosPar
       costo_cts: item.costo_cts,
       item_id: item.id,
       detalle: detalleArticulo(item),
+      trabajo,
     });
   });
 }
@@ -71,8 +76,8 @@ export function listarAreas(db: SQLiteDatabase, proyectoId: number) {
 /** Quita la partida y resta su cantidad de la línea de la cotización (que se borra si queda en cero). */
 export function eliminarPartida(db: SQLiteDatabase, id: number) {
   return db.withTransactionAsync(async () => {
-    const p = await db.getFirstAsync<Pick<Partida, 'proyecto_id' | 'equipo' | 'cantidad' | 'item_id' | 'en_cotizacion'>>(
-      'SELECT proyecto_id, equipo, cantidad, item_id, en_cotizacion FROM levantamiento WHERE id = ?',
+    const p = await db.getFirstAsync<Pick<Partida, 'proyecto_id' | 'equipo' | 'cantidad' | 'item_id' | 'en_cotizacion' | 'trabajo'>>(
+      'SELECT proyecto_id, equipo, cantidad, item_id, en_cotizacion, trabajo FROM levantamiento WHERE id = ?',
       id
     );
     if (!p) return;
@@ -82,12 +87,12 @@ export function eliminarPartida(db: SQLiteDatabase, id: number) {
       const linea =
         p.item_id !== null
           ? await db.getFirstAsync<{ id: number; cantidad: number }>(
-              'SELECT id, cantidad FROM cotizacion_items WHERE proyecto_id = ? AND item_id = ? ORDER BY id LIMIT 1',
-              p.proyecto_id, p.item_id
+              "SELECT id, cantidad FROM cotizacion_items WHERE proyecto_id = ? AND item_id = ? AND IFNULL(trabajo, '') = ? ORDER BY id LIMIT 1",
+              p.proyecto_id, p.item_id, p.trabajo ?? ''
             )
           : await db.getFirstAsync<{ id: number; cantidad: number }>(
-              'SELECT id, cantidad FROM cotizacion_items WHERE proyecto_id = ? AND item_id IS NULL AND lower(trim(descripcion)) = lower(trim(?)) ORDER BY id LIMIT 1',
-              p.proyecto_id, p.equipo
+              "SELECT id, cantidad FROM cotizacion_items WHERE proyecto_id = ? AND item_id IS NULL AND lower(trim(descripcion)) = lower(trim(?)) AND IFNULL(trabajo, '') = ? ORDER BY id LIMIT 1",
+              p.proyecto_id, p.equipo, p.trabajo ?? ''
             );
       if (linea) {
         if (linea.cantidad - p.cantidad > 0) await db.runAsync('UPDATE cotizacion_items SET cantidad = cantidad - ? WHERE id = ?', p.cantidad, linea.id);

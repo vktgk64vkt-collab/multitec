@@ -27,11 +27,14 @@ export async function negocioParaPdf(db: SQLiteDatabase): Promise<DatosPdf['nego
 
 // El documento que se está por exportar; la pantalla de vista previa lo toma de aquí (una ruta no puede llevarlo en su dirección).
 let pendiente: DatosPdf | null = null;
+let despuesDeCompartir: (() => unknown) | undefined;
 export const documentoPendiente = () => pendiente;
+export const alCompartirPendiente = () => despuesDeCompartir;
 
-/** Abre la vista previa del documento; desde ahí se comparte. */
-export function previsualizar(d: DatosPdf) {
+/** Abre la vista previa del documento; desde ahí se comparte. `alCompartir` corre cuando se abre la hoja de compartir. */
+export function previsualizar(d: DatosPdf, alCompartir?: () => unknown) {
   pendiente = d;
+  despuesDeCompartir = alCompartir;
   router.push('/vista-previa');
 }
 

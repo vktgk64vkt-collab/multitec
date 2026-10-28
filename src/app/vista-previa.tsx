@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import { mensajeError } from '@/accion';
-import { compartirArchivo, documentoPendiente, generarPdf, type ArchivoPdf } from '@/pdf';
+import { alCompartirPendiente, compartirArchivo, documentoPendiente, generarPdf, type ArchivoPdf } from '@/pdf';
 import { htmlDocumento } from '@/pdfHtml';
 import { color } from '@/tema';
 import { Boton } from '@/ui';
@@ -14,6 +14,7 @@ import { Boton } from '@/ui';
 export default function VistaPrevia() {
   const { bottom } = useSafeAreaInsets();
   const [documento] = useState(documentoPendiente);
+  const [alCompartir] = useState(alCompartirPendiente);
   const [archivo, setArchivo] = useState<ArchivoPdf | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modo, setModo] = useState<'pdf' | 'html'>('pdf');
@@ -83,7 +84,13 @@ export default function VistaPrevia() {
       />
 
       <View style={[estilos.barra, { paddingBottom: bottom + 12 }]}>
-        <Boton texto="Compartir PDF" onPress={() => compartirArchivo(archivo)} />
+        <Boton
+          texto="Compartir PDF"
+          onPress={async () => {
+            await compartirArchivo(archivo);
+            await alCompartir?.();
+          }}
+        />
       </View>
     </View>
   );

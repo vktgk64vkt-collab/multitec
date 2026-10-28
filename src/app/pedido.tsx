@@ -1,4 +1,5 @@
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
+import { AvisoEjecucion, useEjecucionIniciada } from '@/bloqueo';
 import { Link, router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -53,6 +54,7 @@ export default function Pedido() {
   const { proyecto, area: areaInicial, auto } = useLocalSearchParams<{ proyecto?: string; area?: string; auto?: string }>();
   const [proyectoId, setProyectoId] = useState<number | null>(proyecto ? Number(proyecto) : null);
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+  const aprobada = useEjecucionIniciada(proyectoId);
   const [inventario, setInventario] = useState<Producto[] | null>(null);
   const [conClave, setConClave] = useState(false);
   const [texto, setTexto] = useState('');
@@ -73,9 +75,9 @@ export default function Pedido() {
     useCallback(() => {
       listarCatalogo(db).then(setInventario);
       leerClave().then((c) => setConClave(!!c));
-      // proyectos donde todavía se puede levantar (sin factura), el más urgente primero
-      proyectosConResumen(db, 'activos').then((r) => {
-        const libres = r.filter((x) => !x.resumen.factura).map((x) => x.proyecto);
+      // levantamientos donde todavía se puede agregar (cotizaciones sin aprobar), el más urgente primero
+      proyectosConResumen(db, 'activos', 'cotizacion').then((r) => {
+        const libres = r.map((x) => x.proyecto);
         setProyectos(libres);
         setProyectoId((actual) => actual ?? libres[0]?.id ?? null);
       });
@@ -197,7 +199,7 @@ export default function Pedido() {
   const sinResolver = (revision ?? []).length - listas.length;
 
   async function agregar() {
-    if (proyectoId === null) return Alert.alert('Elige el proyecto', 'Toca el proyecto al que quieres agregar estos equipos.');
+    if (proyectoId === null) return Alert.alert('Elige el levantamiento', 'Toca el levantamiento al que quieres agregar estos equipos.');
     if (listas.length === 0) return Alert.alert('Nada que agregar', 'Elige un artículo para cada línea, o márcala "Agregar a mano".');
     const op = await obtenerOpciones(db, proyectoId);
     for (const r of listas) {
@@ -208,21 +210,24 @@ export default function Pedido() {
     router.back();
   }
 
+  if (aprobada && proyectoId !== null) return <AvisoEjecucion proyectoId={proyectoId} />;
+
   return (
     <ScrollView {...PROPS_TECLADO} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Dictar pedido' }} />
 
       <Tarjeta>
-        <Etiqueta>Proyecto</Etiqueta>
+        <Etiqueta>Levantamiento</Etiqueta>
         {proyectos.length === 0 ? (
           <Link href="/proyecto/nuevo" style={estilos.enlace}>
-            No hay proyectos en curso sin factura. Crea uno.
+            No hay levantamientos. Crea uno con el cliente.
           </Link>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={estilos.fila} keyboardShouldPersistTaps="handled">
             {proyectos.map((p) => (
               <Chip key={p.id} borde texto={p.nombre.length > 26 ? `${p.nombre.slice(0, 25)}…` : p.nombre} activo={proyectoId === p.id} onPress={() => setProyectoId(p.id)} />
             ))}
+            <Chip borde texto="+ Nuevo" onPress={() => router.push('/proyecto/nuevo')} />
           </ScrollView>
         )}
       </Tarjeta>
@@ -337,6 +342,6 @@ const estilos = StyleSheet.create({
   pasoTexto: { fontSize: 22, color: color.texto },
   cantidad: { minWidth: 32, textAlign: 'center', fontSize: 18, fontWeight: '700', color: color.texto },
   mic: { width: 96, height: 96, borderRadius: 48, backgroundColor: color.primario, alignItems: 'center', justifyContent: 'center' },
-  micActivo: { backgroundColor: '#c0262d' },
+  micActivo: { backgroundColor: color.peligro },
   estadoMic: { fontSize: 15, fontWeight: '600', color: color.texto },
 });

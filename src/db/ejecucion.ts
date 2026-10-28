@@ -17,6 +17,7 @@ export interface LineaEjecucion {
   tipo: TipoItem;
   costo_cts: number;
   item_id: number | null;
+  trabajo: string | null;
 }
 
 export interface Comprobante {
@@ -29,7 +30,7 @@ export interface Comprobante {
 }
 
 export type DatosLineaEjecucion = Pick<LineaEjecucion, 'descripcion' | 'cantidad' | 'precio_cts'> &
-  Partial<Pick<LineaEjecucion, 'detalle' | 'tipo' | 'costo_cts' | 'item_id'>>;
+  Partial<Pick<LineaEjecucion, 'detalle' | 'tipo' | 'costo_cts' | 'item_id' | 'trabajo'>>;
 
 export async function ejecucionIniciada(db: SQLiteDatabase, proyectoId: number) {
   const r = await db.getFirstAsync<{ f: string | null }>('SELECT ejecucion_iniciada_en AS f FROM proyectos WHERE id = ?', proyectoId);
@@ -46,16 +47,19 @@ export function listarEjecucion(db: SQLiteDatabase, proyectoId: number) {
  */
 export async function iniciarEjecucion(db: SQLiteDatabase, proyectoId: number): Promise<boolean> {
   if ((await ejecucionIniciada(db, proyectoId)) || (await listarLineas(db, proyectoId)).length === 0) return false;
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(
-      `INSERT INTO ejecucion_items (proyecto_id, descripcion, detalle, cantidad, cantidad_cotizada, precio_cts, descuento_pct, tipo, costo_cts, item_id)
-       SELECT proyecto_id, descripcion, detalle, cantidad, cantidad, precio_cts, descuento_pct, tipo, costo_cts, item_id
-       FROM cotizacion_items WHERE proyecto_id = ? ORDER BY id`,
-      proyectoId
-    );
-    await db.runAsync("UPDATE proyectos SET ejecucion_iniciada_en = datetime('now', 'localtime'), estado = 'en ejecución' WHERE id = ?", proyectoId);
-  });
+  await db.withTransactionAsync(() => copiarCotizacion(db, proyectoId));
   return true;
+}
+
+/** La copia en sí, sin transacción propia para poder usarla dentro de otra (aprobar una cotización). */
+export async function copiarCotizacion(db: SQLiteDatabase, proyectoId: number) {
+  await db.runAsync(
+    `INSERT INTO ejecucion_items (proyecto_id, descripcion, detalle, cantidad, cantidad_cotizada, precio_cts, descuento_pct, tipo, costo_cts, item_id, trabajo)
+     SELECT proyecto_id, descripcion, detalle, cantidad, cantidad, precio_cts, descuento_pct, tipo, costo_cts, item_id, trabajo
+     FROM cotizacion_items WHERE proyecto_id = ? ORDER BY id`,
+    proyectoId
+  );
+  await db.runAsync("UPDATE proyectos SET ejecucion_iniciada_en = datetime('now', 'localtime'), estado = 'en ejecución' WHERE id = ?", proyectoId);
 }
 
 export function cambiarCantidad(db: SQLiteDatabase, id: number, cantidad: number) {
@@ -66,19 +70,19 @@ export function cambiarCantidad(db: SQLiteDatabase, id: number, cantidad: number
 export async function agregarAEjecucion(db: SQLiteDatabase, proyectoId: number, d: DatosLineaEjecucion) {
   const existente =
     d.item_id != null
-      ? await db.getFirstAsync<{ id: number }>('SELECT id FROM ejecucion_items WHERE proyecto_id = ? AND item_id = ? ORDER BY id LIMIT 1', proyectoId, d.item_id)
+      ? await db.getFirstAsync<{ id: number }>("SELECT id FROM ejecucion_items WHERE proyecto_id = ? AND item_id = ? AND IFNULL(trabajo, '') = ? ORDER BY id LIMIT 1", proyectoId, d.item_id, d.trabajo ?? '')
       : await db.getFirstAsync<{ id: number }>(
-          'SELECT id FROM ejecucion_items WHERE proyecto_id = ? AND item_id IS NULL AND lower(trim(descripcion)) = lower(trim(?)) ORDER BY id LIMIT 1',
-          proyectoId, d.descripcion
+          "SELECT id FROM ejecucion_items WHERE proyecto_id = ? AND item_id IS NULL AND lower(trim(descripcion)) = lower(trim(?)) AND IFNULL(trabajo, '') = ? ORDER BY id LIMIT 1",
+          proyectoId, d.descripcion, d.trabajo ?? ''
         );
   if (existente) {
     await db.runAsync('UPDATE ejecucion_items SET cantidad = cantidad + ? WHERE id = ?', d.cantidad, existente.id);
     return;
   }
   await db.runAsync(
-    `INSERT INTO ejecucion_items (proyecto_id, descripcion, detalle, cantidad, cantidad_cotizada, precio_cts, tipo, costo_cts, item_id)
-     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
-    proyectoId, d.descripcion, d.detalle ?? null, d.cantidad, d.precio_cts, d.tipo ?? 'equipo', d.costo_cts ?? 0, d.item_id ?? null
+    `INSERT INTO ejecucion_items (proyecto_id, descripcion, detalle, cantidad, cantidad_cotizada, precio_cts, tipo, costo_cts, item_id, trabajo)
+     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+    proyectoId, d.descripcion, d.detalle ?? null, d.cantidad, d.precio_cts, d.tipo ?? 'equipo', d.costo_cts ?? 0, d.item_id ?? null, d.trabajo ?? null
   );
 }
 
@@ -129,12 +133,14 @@ export interface ResumenEjecucion {
 /** Lo cotizado frente a lo real, los cambios y lo gastado en materiales. null si la ejecución no se ha iniciado. */
 export async function resumenEjecucion(db: SQLiteDatabase, proyectoId: number): Promise<ResumenEjecucion | null> {
   if (!(await ejecucionIniciada(db, proyectoId))) return null;
-  const items = await listarEjecucion(db, proyectoId);
-  const op = await obtenerOpciones(db, proyectoId);
-  const g = await db.getFirstAsync<{ n: number; total: number }>('SELECT COUNT(*) AS n, COALESCE(SUM(monto_cts), 0) AS total FROM comprobantes WHERE proyecto_id = ?', proyectoId);
+  const [items, op, g] = await Promise.all([
+    listarEjecucion(db, proyectoId),
+    obtenerOpciones(db, proyectoId),
+    db.getFirstAsync<{ n: number; total: number }>('SELECT COUNT(*) AS n, COALESCE(SUM(monto_cts), 0) AS total FROM comprobantes WHERE proyecto_id = ?', proyectoId),
+  ]);
   return {
-    cotizado_cts: totales(items.map((i) => ({ ...i, cantidad: i.cantidad_cotizada })), op.impuesto_pct, op.con_itbis).total,
-    real_cts: totales(items, op.impuesto_pct, op.con_itbis).total,
+    cotizado_cts: totales(items.map((i) => ({ ...i, cantidad: i.cantidad_cotizada })), op.impuesto_pct, op.con_itbis, op.descuento_pct).total,
+    real_cts: totales(items, op.impuesto_pct, op.con_itbis, op.descuento_pct).total,
     cambios: contarCambios(items),
     gastos_cts: g?.total ?? 0,
     comprobantes: g?.n ?? 0,

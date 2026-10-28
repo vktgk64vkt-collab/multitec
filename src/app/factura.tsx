@@ -15,6 +15,8 @@ import {
   listarLineasFactura,
   listarPagos,
   NCF_VALIDO,
+  SIN_NCF,
+  siguienteNcf,
   obtenerFactura,
   registrarPago,
   type Factura as FacturaDB,
@@ -28,6 +30,7 @@ import { obtenerNegocio } from '@/db/negocio';
 import { negocioParaPdf, previsualizar } from '@/pdf';
 import { FilaDeslizable } from '@/deslizar';
 import { color } from '@/tema';
+import { agruparPorTrabajo, etiquetaTrabajo, hayVariosTrabajos } from '@/trabajos';
 import { Boton, Campo, Chip, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const PLAZOS = [15, 30, 60];
@@ -48,24 +51,30 @@ export default function Factura() {
   const cargar = useCallback(
     () =>
       obtenerFactura(db, proyectoId).then(async (f) => {
+        const [ps, dt, ar] = await Promise.all([
+          f ? listarPagos(db, f.id) : Promise.resolve([]),
+          f ? listarLineasFactura(db, f.id) : Promise.resolve([]),
+          listarAreas(db, proyectoId),
+        ]);
         setFactura(f);
         setVence(f?.vence ?? '');
-        setPagos(f ? await listarPagos(db, f.id) : []);
-        setDetalle(f ? await listarLineasFactura(db, f.id) : []);
-        setAreas(await listarAreas(db, proyectoId));
+        setPagos(ps);
+        setDetalle(dt);
+        setAreas(ar);
         if (!f) {
-          const { lineas, deEjecucion } = await lineasParaFacturar(db, proyectoId);
+          // el NCF que sigue al último emitido, ya puesto; solo se escribe si el campo está vacío
+          siguienteNcf(db).then((sugerido) => sugerido && setNcf((actual) => actual || sugerido));
+          const [{ lineas, deEjecucion }, op, catalogo] = await Promise.all([lineasParaFacturar(db, proyectoId), obtenerOpciones(db, proyectoId), listarCatalogo(db)]);
           setDeEjecucion(deEjecucion);
-          const op = await obtenerOpciones(db, proyectoId);
           // equipos que piden más de lo que hay en bodega (solo los que llevan conteo)
-          const inventario = new Map((await listarCatalogo(db)).map((p) => [p.id, p]));
+          const inventario = new Map(catalogo.map((p) => [p.id, p]));
           const pedido = new Map<number, number>();
           for (const l of lineas) if (l.item_id !== null) pedido.set(l.item_id, (pedido.get(l.item_id) ?? 0) + l.cantidad);
           const sinStock = [...pedido]
             .map(([itemId, cant]) => ({ p: inventario.get(itemId), cant }))
             .filter(({ p, cant }) => p && p.stock !== null && cant > p.stock)
             .map(({ p, cant }) => `${p?.nombre}: pides ${cant}, hay ${p?.stock}`);
-          setCotizacion({ lineas, total: totales(lineas, op.impuesto_pct, op.con_itbis).total, sinStock });
+          setCotizacion({ lineas, total: totales(lineas, op.impuesto_pct, op.con_itbis, op.descuento_pct).total, sinStock });
         }
       }),
     [db, proyectoId]
@@ -82,8 +91,9 @@ export default function Factura() {
   const sinPrecio = cotizacion.lineas.filter((l) => l.precio_cts === 0).length;
 
   async function generar() {
-    const codigo = ncf.trim().toUpperCase();
-    if (!NCF_VALIDO.test(codigo)) {
+    // sin comprobante: la factura se hace igual y el NCF queda en ceros
+    const codigo = ncf.trim().toUpperCase() || SIN_NCF;
+    if (codigo !== SIN_NCF && !NCF_VALIDO.test(codigo)) {
       return Alert.alert('NCF inválido', 'Usa B01 + 8 dígitos (ej. B0100000001) o E31 + 10 dígitos.');
     }
     const r = await crearFactura(db, proyectoId, codigo);
@@ -93,6 +103,7 @@ export default function Factura() {
   }
 
   async function pdf(f: FacturaDB) {
+    const opciones = await obtenerOpciones(db, proyectoId);
     previsualizar({
       titulo: f.anulada ? 'Factura (ANULADA)' : 'Factura',
       ncf: f.ncf,
@@ -105,11 +116,14 @@ export default function Factura() {
       proyecto: f.proyecto,
       lineas: await listarLineasFactura(db, f.id),
       subtotal: f.subtotal_cts,
+      descuento: f.descuento_cts,
+      descuentoPct: f.descuento_pct,
       impuesto: f.impuesto_cts,
       total: f.total_cts,
       pagos: pagos.map((p) => ({ fecha: formatearFecha(p.creado_en), monto_cts: p.monto_cts })),
       condiciones: await obtenerCondiciones(db, proyectoId),
-      preciosConItbis: (await obtenerOpciones(db, proyectoId)).con_itbis,
+      preciosConItbis: opciones.con_itbis,
+      impuestoPct: opciones.impuesto_pct,
     });
   }
 
@@ -201,9 +215,10 @@ export default function Factura() {
             <Text style={estilos.detalle}>Al facturar, el stock del inventario baja según las cantidades.</Text>
           </Tarjeta>
           <Tarjeta>
-            <Etiqueta>Comprobante fiscal (NCF)</Etiqueta>
-            <Campo placeholder="Ej. B0100000001" autoCapitalize="characters" autoCorrect={false} value={ncf} onChangeText={setNcf} />
+            <Etiqueta>Comprobante fiscal (NCF), opcional</Etiqueta>
+            <Campo placeholder="Ej. B0100000001 (vacío = 00000000)" autoCapitalize="characters" autoCorrect={false} value={ncf} onChangeText={setNcf} />
             <Boton texto="Generar factura" onPress={generar} />
+            {ncf ? <Boton tipo="secundario" texto="Sin comprobante (00000000)" onPress={() => setNcf('')} /> : null}
           </Tarjeta>
         </>
       ) : (
@@ -217,9 +232,10 @@ export default function Factura() {
           </Tarjeta>
           <Tarjeta style={estilos.grupo}>
             <Text style={estilos.seccion}>Detalle</Text>
-            {agruparLineas(detalle.map((l) => ({ ...l, descripcion: sinArea(l.descripcion, areas) }))).map((l, i) => (
+            {agruparPorTrabajo(agruparLineas(detalle.map((l) => ({ ...l, descripcion: sinArea(l.descripcion, areas) })))).flatMap((g) => g.lineas).map((l, i) => (
               <View key={i} style={estilos.linea}>
                 <View style={{ flex: 1 }}>
+                  {hayVariosTrabajos(detalle) ? <Text style={estilos.detalle}>{etiquetaTrabajo(l.trabajo)}</Text> : null}
                   <Text style={estilos.nombre}>
                     {l.cantidad} × {l.descripcion}
                   </Text>
@@ -231,6 +247,7 @@ export default function Factura() {
           </Tarjeta>
           <Tarjeta style={estilos.grupo}>
             <Text style={estilos.detalle}>Subtotal: {moneda(factura.subtotal_cts)}</Text>
+            {factura.descuento_cts > 0 ? <Text style={estilos.detalle}>Descuento ({factura.descuento_pct}%): −{moneda(factura.descuento_cts)}</Text> : null}
             <Text style={estilos.detalle}>ITBIS: {moneda(factura.impuesto_cts)}</Text>
             <Text style={estilos.total}>Total: {moneda(factura.total_cts)}</Text>
             {!anulada ? (
@@ -315,7 +332,7 @@ const estilos = StyleSheet.create({
   vencida: {
     alignSelf: 'flex-start',
     color: '#fff',
-    backgroundColor: '#c0262d',
+    backgroundColor: color.peligro,
     fontWeight: '700',
     paddingHorizontal: 10,
     paddingVertical: 4,

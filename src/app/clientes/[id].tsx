@@ -21,7 +21,8 @@ export default function DetalleCliente() {
   useFocusEffect(
     useCallback(() => {
       obtenerCliente(db, Number(id)).then(setCliente);
-      listarProyectos(db).then((ps) => setProyectos(ps.filter((p) => p.cliente_id === Number(id))));
+      // proyectos y cotizaciones por responder del cliente
+      Promise.all([listarProyectos(db), listarProyectos(db, 'todos', 'cotizacion')]).then(([ps, cs]) => setProyectos([...ps, ...cs].filter((p) => p.cliente_id === Number(id))));
     }, [db, id])
   );
 

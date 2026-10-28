@@ -4,10 +4,13 @@ import { useCallback, useState } from 'react';
 import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { resumenFacturas } from '@/db/factura';
 import { obtenerNegocio, type Negocio } from '@/db/negocio';
 import { listarProyectos, type Proyecto } from '@/db/proyectos';
+import { diasDesde, moneda } from '@/dinero';
 import { uriFoto } from '@/fotos';
 import { paleta } from '@/marca';
+import { DIAS_ENTRE_RESPALDOS, diasSinRespaldo } from '@/respaldo';
 import { BotonDictado } from '@/dictado';
 import { BotonMenu } from '@/menu';
 import { confirmarEliminarProyecto, FilaProyecto } from '@/proyectoUi';
@@ -21,15 +24,30 @@ export default function Inicio() {
   const { top } = useSafeAreaInsets();
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [cargado, setCargado] = useState(false);
+  const [porResponder, setPorResponder] = useState(0);
+  const [sinRespuesta, setSinRespuesta] = useState(0);
+  const [cobros, setCobros] = useState({ por_cobrar: 0, cobrado_mes: 0 });
+  const [sinRespaldo, setSinRespaldo] = useState<number | null | undefined>(undefined);
   const [empresa, setEmpresa] = useState<Negocio | null | undefined>(undefined);
 
   useFocusEffect(
     useCallback(() => {
-      listarProyectos(db, 'activos').then((p) => {
-        setProyectos(p);
+      // todo junto y una sola vez: así la pantalla se pinta una vez en vez de seis
+      Promise.all([
+        listarProyectos(db, 'activos'),
+        listarProyectos(db, 'activos', 'cotizacion'),
+        resumenFacturas(db),
+        diasSinRespaldo(),
+        obtenerNegocio(db),
+      ]).then(([activos, cotizaciones, facturas, respaldo, negocio]) => {
+        setProyectos(activos);
         setCargado(true);
+        setPorResponder(cotizaciones.length);
+        setSinRespuesta(cotizaciones.filter((x) => x.cot_estado === 'enviada' && (diasDesde(x.enviada_en) ?? 0) >= 7).length);
+        setCobros(facturas);
+        setSinRespaldo(respaldo);
+        setEmpresa(negocio);
       });
-      obtenerNegocio(db).then(setEmpresa);
     }, [db])
   );
 
@@ -67,6 +85,11 @@ export default function Inicio() {
           </View>
         )}
         <Text style={[estilos.resumen, { color: p.sobrePrincipal }]}>{resumen}</Text>
+        {cobros.por_cobrar > 0 || cobros.cobrado_mes > 0 ? (
+          <Text style={[estilos.resumen, { color: p.sobrePrincipal }]}>
+            Por cobrar {moneda(cobros.por_cobrar)} · Cobrado este mes {moneda(cobros.cobrado_mes)}
+          </Text>
+        ) : null}
       </View>
 
       <FlatList
@@ -74,16 +97,37 @@ export default function Inicio() {
         keyExtractor={(x) => String(x.id)}
         contentContainerStyle={estilos.lista}
         ListHeaderComponent={
+          <>
+          {porResponder > 0 ? (
+            <Link href="/cotizaciones" asChild>
+              <Pressable accessibilityRole="button" style={estilos.aviso}>
+                <Text style={estilos.textoAviso}>
+                  {plural(porResponder, 'cotización', 'cotizaciones')} {porResponder === 1 ? 'espera' : 'esperan'} respuesta
+                  {sinRespuesta > 0 ? ` · ${sinRespuesta} sin respuesta hace más de 7 días` : ''}
+                </Text>
+                <Text style={estilos.textoNuevo}>Ver ›</Text>
+              </Pressable>
+            </Link>
+          ) : null}
+          {sinRespaldo !== undefined && (sinRespaldo === null || sinRespaldo >= DIAS_ENTRE_RESPALDOS) && proyectos.length + porResponder > 0 ? (
+            <Link href="/respaldo" asChild>
+              <Pressable accessibilityRole="button" style={[estilos.aviso, { borderLeftColor: color.peligro }]}>
+                <Text style={estilos.textoAviso}>{sinRespaldo === null ? 'Aún no has hecho un respaldo' : `Hace ${sinRespaldo} días sin respaldo`}</Text>
+                <Text style={estilos.textoNuevo}>Respaldar ›</Text>
+              </Pressable>
+            </Link>
+          ) : null}
           <View style={estilos.encabezadoLista}>
             <Text style={estilos.seccion}>En curso</Text>
             <Link href="/proyecto/nuevo" asChild>
               <Pressable accessibilityRole="button" style={estilos.nuevo}>
-                <Text style={estilos.textoNuevo}>+ Nuevo proyecto</Text>
+                <Text style={estilos.textoNuevo}>+ Nuevo levantamiento</Text>
               </Pressable>
             </Link>
           </View>
+          </>
         }
-        ListEmptyComponent={cargado ? <Text style={estilos.vacio}>No hay proyectos en curso. Toca &quot;+ Nuevo proyecto&quot; para empezar uno.</Text> : undefined}
+        ListEmptyComponent={cargado ? <Text style={estilos.vacio}>No hay proyectos en curso. Cuando un cliente apruebe una cotización, aparece aquí.</Text> : undefined}
         renderItem={({ item }) => (
           <FilaProyecto
             proyecto={item}
@@ -110,6 +154,8 @@ const estilos = StyleSheet.create({
   resumen: { fontSize: 14, fontWeight: '600', opacity: 0.9 },
   lista: { padding: 16, paddingBottom: 24, gap: 10 },
   encabezadoLista: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+  aviso: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, marginBottom: 10, paddingHorizontal: 14, borderRadius: 14, backgroundColor: color.tarjeta, borderLeftWidth: 4, borderLeftColor: color.alerta },
+  textoAviso: { fontSize: 15, fontWeight: '600', color: color.texto },
   seccion: { fontSize: 20, fontWeight: '700', color: color.texto },
   nuevo: { minHeight: 44, justifyContent: 'center' },
   textoNuevo: { color: color.primario, fontSize: 16, fontWeight: '600' },

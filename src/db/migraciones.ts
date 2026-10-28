@@ -2,10 +2,16 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { CODIGOS_SQL } from '../nomenclatura';
 
-export const VERSION_ACTUAL = 20;
+export const VERSION_ACTUAL = 24;
 
 // Marca las partidas que ya tienen su línea en la cotización (datos anteriores a la suma de líneas repetidas).
 export const EN_COTIZACION_SQL = 'UPDATE levantamiento SET en_cotizacion = 1 WHERE id IN (SELECT partida_id FROM cotizacion_items WHERE partida_id IS NOT NULL)';
+
+// Un registro es "proyecto" cuando está aprobado; hasta entonces es una cotización. Los que ya iban avanzados
+// (ejecución, factura o cerrados) quedan como proyectos; los demás vuelven a ser cotizaciones por responder.
+export const APROBADOS_SQL = `UPDATE proyectos SET aprobado_en = creado_en, cot_estado = 'aprobada'
+  WHERE aprobado_en IS NULL AND (estado IN ('en ejecución', 'facturado', 'cerrado') OR ejecucion_iniciada_en IS NOT NULL
+    OR id IN (SELECT proyecto_id FROM facturas))`;
 
 export async function migrarBaseDeDatos(db: SQLiteDatabase) {
   // por conexión y fuera de la transacción: sin foreign_keys el ON DELETE CASCADE del esquema no hace nada
@@ -271,6 +277,61 @@ async function aplicar(db: SQLiteDatabase, version: number) {
         monto_cts INTEGER,
         creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
       );
+    `);
+  }
+
+  if (version < 21) {
+    // descuento global del documento (en vez de uno por línea) y facturas sin comprobante: su NCF queda en 00000000, que puede repetirse
+    await db.execAsync(`
+      ALTER TABLE proyectos ADD COLUMN descuento_pct REAL NOT NULL DEFAULT 0;
+      ALTER TABLE facturas ADD COLUMN descuento_pct REAL NOT NULL DEFAULT 0;
+      ALTER TABLE facturas ADD COLUMN descuento_cts INTEGER NOT NULL DEFAULT 0;
+      DROP INDEX IF EXISTS idx_facturas_ncf;
+    `);
+    const repetido = await db.getFirstAsync("SELECT 1 FROM facturas WHERE ncf <> '00000000' GROUP BY ncf HAVING COUNT(*) > 1");
+    if (!repetido) await db.execAsync("CREATE UNIQUE INDEX IF NOT EXISTS idx_facturas_ncf ON facturas (ncf) WHERE ncf <> '00000000'");
+  }
+
+  if (version < 22) {
+    // cotización antes que proyecto: aprobado_en vacío = cotización pendiente; cot_estado = borrador | enviada | rechazada | aprobada
+    await db.execAsync(`
+      ALTER TABLE proyectos ADD COLUMN aprobado_en TEXT;
+      ALTER TABLE proyectos ADD COLUMN cot_estado TEXT NOT NULL DEFAULT 'borrador';
+    `);
+    await db.execAsync(APROBADOS_SQL);
+  }
+
+  if (version < 23) {
+    // cuándo se envió la cotización (para dar seguimiento) y kits: paquetes de líneas que se agregan a una cotización de una vez
+    await db.execAsync(`
+      ALTER TABLE proyectos ADD COLUMN enviada_en TEXT;
+      CREATE TABLE IF NOT EXISTS kits (
+        id INTEGER PRIMARY KEY NOT NULL,
+        nombre TEXT NOT NULL,
+        creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+      CREATE TABLE IF NOT EXISTS kit_items (
+        id INTEGER PRIMARY KEY NOT NULL,
+        kit_id INTEGER NOT NULL REFERENCES kits (id) ON DELETE CASCADE,
+        descripcion TEXT NOT NULL,
+        detalle TEXT,
+        cantidad INTEGER NOT NULL,
+        precio_cts INTEGER NOT NULL DEFAULT 0,
+        tipo TEXT NOT NULL DEFAULT 'equipo',
+        costo_cts INTEGER NOT NULL DEFAULT 0,
+        item_id INTEGER
+      );
+    `);
+  }
+
+  if (version < 24) {
+    // trabajos dentro de un proyecto (alarma, cámaras, portón...): cada línea dice a cuál pertenece; vacío = General
+    await db.execAsync(`
+      ALTER TABLE levantamiento ADD COLUMN trabajo TEXT;
+      ALTER TABLE cotizacion_items ADD COLUMN trabajo TEXT;
+      ALTER TABLE ejecucion_items ADD COLUMN trabajo TEXT;
+      ALTER TABLE factura_items ADD COLUMN trabajo TEXT;
+      ALTER TABLE kit_items ADD COLUMN trabajo TEXT;
     `);
   }
 

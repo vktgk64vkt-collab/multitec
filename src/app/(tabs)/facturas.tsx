@@ -1,7 +1,7 @@
 import { Link, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
 import { FilaDeslizable } from '@/deslizar';
@@ -14,7 +14,7 @@ import { PantallaTab } from '@/pestanas';
 import { color, tarjeta } from '@/tema';
 import { Campo, PROPS_TECLADO } from '@/ui';
 
-const SIN_RESUMEN = { por_cobrar: 0, cobrado: 0, vencido: 0 };
+const SIN_RESUMEN = { por_cobrar: 0, cobrado: 0, cobrado_mes: 0, vencido: 0 };
 
 /** Facturas: lo que te deben, lo que cobraste, lo que ya está listo para facturar y todas tus facturas. */
 export default function Facturas() {
@@ -59,65 +59,75 @@ export default function Facturas() {
   const facturasVisibles = q ? facturas.filter((f) => normalizar(`${f.ncf} ${f.cliente} ${f.proyecto}`).includes(q)) : facturas;
   const porFacturarVisibles = q ? porFacturar.filter((x) => normalizar(`${x.proyecto.nombre} ${x.proyecto.cliente}`).includes(q)) : porFacturar;
 
+  const encabezado = (
+    <View style={{ gap: 10 }}>
+      <Campo placeholder="Buscar por NCF, cliente o proyecto" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
+      <View style={estilos.fila}>
+        <View style={[tarjeta, estilos.cifra]}>
+          <Text style={estilos.etiqueta}>Por cobrar</Text>
+          <Text style={[estilos.monto, { color: color.alerta }]}>{moneda(resumen.por_cobrar)}</Text>
+        </View>
+        <View style={[tarjeta, estilos.cifra]}>
+          <Text style={estilos.etiqueta}>Cobrado</Text>
+          <Text style={[estilos.monto, { color: color.ok }]}>{moneda(resumen.cobrado)}</Text>
+        </View>
+      </View>
+      {resumen.vencido > 0 ? (
+        <View style={[tarjeta, estilos.vencido]}>
+          <Text style={estilos.etiqueta}>Vencido</Text>
+          <Text style={[estilos.monto, { color: color.peligro }]}>{moneda(resumen.vencido)}</Text>
+        </View>
+      ) : null}
+
+      {porFacturarVisibles.length > 0 ? (
+        <>
+          <Text style={estilos.seccion}>Listos para facturar</Text>
+          {porFacturarVisibles.map(({ proyecto, resumen: r }) => (
+            <FilaProyecto key={proyecto.id} proyecto={proyecto} detalle={r.ejecucion ? `Ejecución ${moneda(r.ejecucion.real_cts)}` : `Cotización ${moneda(r.total_cts)}`} href={{ pathname: '/factura', params: { proyecto: proyecto.id } }} />
+          ))}
+        </>
+      ) : null}
+
+      <Text style={estilos.seccion}>Facturas</Text>
+    </View>
+  );
+
   return (
     <PantallaTab titulo="Facturas">
-      <ScrollView {...PROPS_TECLADO} contentContainerStyle={estilos.contenido} keyboardShouldPersistTaps="handled">
-        <Campo placeholder="Buscar por NCF, cliente o proyecto" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
-        <View style={estilos.fila}>
-          <View style={[tarjeta, estilos.cifra]}>
-            <Text style={estilos.etiqueta}>Por cobrar</Text>
-            <Text style={[estilos.monto, { color: color.alerta }]}>{moneda(resumen.por_cobrar)}</Text>
-          </View>
-          <View style={[tarjeta, estilos.cifra]}>
-            <Text style={estilos.etiqueta}>Cobrado</Text>
-            <Text style={[estilos.monto, { color: color.ok }]}>{moneda(resumen.cobrado)}</Text>
-          </View>
-        </View>
-        {resumen.vencido > 0 ? (
-          <View style={[tarjeta, estilos.vencido]}>
-            <Text style={estilos.etiqueta}>Vencido</Text>
-            <Text style={[estilos.monto, { color: '#c0262d' }]}>{moneda(resumen.vencido)}</Text>
-          </View>
-        ) : null}
-
-        {porFacturarVisibles.length > 0 ? (
-          <>
-            <Text style={estilos.seccion}>Listos para facturar</Text>
-            {porFacturarVisibles.map(({ proyecto, resumen: r }) => (
-              <FilaProyecto key={proyecto.id} proyecto={proyecto} detalle={`Cotización ${moneda(r.total_cts)}`} href={{ pathname: '/factura', params: { proyecto: proyecto.id } }} />
-            ))}
-          </>
-        ) : null}
-
-        <Text style={estilos.seccion}>Facturas</Text>
-        {cargado && facturasVisibles.length === 0 ? (
-          <Text style={estilos.vacio}>{busqueda ? 'Sin resultados.' : 'Aún no hay facturas. Se crean desde un proyecto, después de cotizar.'}</Text>
-        ) : null}
-        {facturasVisibles.map((f) => {
+      <FlatList {...PROPS_TECLADO}
+        data={facturasVisibles}
+        keyExtractor={(f) => String(f.id)}
+        contentContainerStyle={estilos.contenido}
+        keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={encabezado}
+        ListEmptyComponent={
+          cargado ? <Text style={estilos.vacio}>{busqueda ? 'Sin resultados.' : 'Aún no hay facturas. Se crean desde un proyecto, después de cotizar.'}</Text> : undefined
+        }
+        renderItem={({ item: f }) => {
           const saldo = Math.max(0, f.total_cts - f.pagado_cts);
           const vencida = !f.anulada && saldo > 0 && !!f.vence && f.vence < hoy;
           const estado = f.anulada ? 'Anulada' : saldo === 0 ? 'Pagada ✓' : vencida ? `Vencida · ${moneda(saldo)}` : `Saldo ${moneda(saldo)}`;
           return (
-            <FilaDeslizable key={f.id} etiqueta="Anular" deshabilitada={!!f.anulada} onAccion={() => confirmarAnular(f)}>
-            <Link href={{ pathname: '/factura', params: { proyecto: f.proyecto_id } }} asChild>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Factura ${f.ncf}, ${f.cliente}, ${estado}`} style={[tarjeta, estilos.factura, f.anulada ? { opacity: 0.6 } : null]}>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={estilos.ncf}>{f.ncf}</Text>
-                  <Text style={estilos.detalle}>
-                    {f.cliente} · {f.proyecto}
-                  </Text>
-                  <Text style={estilos.detalle}>{formatearFecha(f.creado_en)}</Text>
-                </View>
-                <View style={estilos.derecha}>
-                  <Text style={estilos.total}>{moneda(f.total_cts)}</Text>
-                  <Text style={[estilos.estado, f.anulada ? { color: color.suave } : saldo === 0 ? { color: color.ok } : vencida ? { color: '#c0262d' } : { color: color.alerta }]}>{estado}</Text>
-                </View>
-              </Pressable>
-            </Link>
+            <FilaDeslizable etiqueta="Anular" deshabilitada={!!f.anulada} onAccion={() => confirmarAnular(f)}>
+              <Link href={{ pathname: '/factura', params: { proyecto: f.proyecto_id } }} asChild>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Factura ${f.ncf}, ${f.cliente}, ${estado}`} style={[tarjeta, estilos.factura, f.anulada ? { opacity: 0.6 } : null]}>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={estilos.ncf}>{f.ncf}</Text>
+                    <Text style={estilos.detalle}>
+                      {f.cliente} · {f.proyecto}
+                    </Text>
+                    <Text style={estilos.detalle}>{formatearFecha(f.creado_en)}</Text>
+                  </View>
+                  <View style={estilos.derecha}>
+                    <Text style={estilos.total}>{moneda(f.total_cts)}</Text>
+                    <Text style={[estilos.estado, f.anulada ? { color: color.suave } : saldo === 0 ? { color: color.ok } : vencida ? { color: color.peligro } : { color: color.alerta }]}>{estado}</Text>
+                  </View>
+                </Pressable>
+              </Link>
             </FilaDeslizable>
           );
-        })}
-      </ScrollView>
+        }}
+      />
     </PantallaTab>
   );
 }
@@ -126,7 +136,7 @@ const estilos = StyleSheet.create({
   contenido: { padding: 16, paddingTop: 8, paddingBottom: 24, gap: 10 },
   fila: { flexDirection: 'row', gap: 12 },
   cifra: { flex: 1, gap: 4 },
-  vencido: { gap: 4, borderLeftWidth: 4, borderLeftColor: '#c0262d' },
+  vencido: { gap: 4, borderLeftWidth: 4, borderLeftColor: color.peligro },
   etiqueta: { fontSize: 13, color: color.suave },
   monto: { fontSize: 20, fontWeight: '700' },
   seccion: { fontSize: 20, fontWeight: '700', color: color.texto, marginTop: 8 },
