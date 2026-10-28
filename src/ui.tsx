@@ -53,27 +53,37 @@ AccessibilityInfo.isReduceMotionEnabled()
 export function Presionable({
   children,
   style,
+  posicion,
   hundir = 0.97,
   ...props
-}: Omit<ComponentProps<typeof Pressable>, 'style' | 'children'> & { children: ReactNode; style?: ViewStyle | (ViewStyle | false | undefined)[]; hundir?: number }) {
+}: Omit<ComponentProps<typeof Pressable>, 'style' | 'children'> & {
+  children: ReactNode;
+  style?: ViewStyle | (ViewStyle | false | undefined)[];
+  /** Colocación del botón en la pantalla (position, top, right, zIndex): va fuera, en el envoltorio que se anima. */
+  posicion?: ViewStyle;
+  hundir?: number;
+}) {
   const [escala] = useState(() => new Animated.Value(1));
   const mover = (a: number) => {
     if (sinMovimiento) return;
     Animated.spring(escala, { toValue: a, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
   };
   return (
-    <Pressable
-      {...props}
-      onPressIn={(e) => {
-        mover(hundir);
-        props.onPressIn?.(e);
-      }}
-      onPressOut={(e) => {
-        mover(1);
-        props.onPressOut?.(e);
-      }}>
-      <Animated.View style={[style, { transform: [{ scale: escala }] }]}>{children}</Animated.View>
-    </Pressable>
+    <Animated.View style={[posicion, { transform: [{ scale: escala }] }]}>
+      <Pressable
+        {...props}
+        style={style}
+        onPressIn={(e) => {
+          mover(hundir);
+          props.onPressIn?.(e);
+        }}
+        onPressOut={(e) => {
+          mover(1);
+          props.onPressOut?.(e);
+        }}>
+        {children}
+      </Pressable>
+    </Animated.View>
   );
 }
 

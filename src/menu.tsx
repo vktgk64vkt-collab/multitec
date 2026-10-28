@@ -32,7 +32,8 @@ export function BotonMenu() {
         accessibilityRole="button"
         accessibilityLabel="Menú: clientes, inventario, reportes y configuración"
         hundir={0.9}
-        style={[estilos.boton, { top: top + 8 }]}
+        posicion={{ position: 'absolute', right: 16, top: top + 8, zIndex: 10 }}
+        style={estilos.boton}
         onPress={() => {
           haptico();
           setAbierto(true);
@@ -65,8 +66,6 @@ export function BotonMenu() {
 
 const estilos = StyleSheet.create({
   boton: {
-    position: 'absolute',
-    right: 16,
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -78,7 +77,6 @@ const estilos = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 1 },
     elevation: 3,
-    zIndex: 10,
   },
   fondo: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' },
   panel: {

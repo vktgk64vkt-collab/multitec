@@ -8,7 +8,7 @@ import { FilaProyecto } from '@/proyectoUi';
 import { normalizar } from '@/pedido';
 import { PantallaTab } from '@/pestanas';
 import { color } from '@/tema';
-import { Campo, PROPS_TECLADO } from '@/ui';
+import { Campo, Icono, PROPS_TECLADO } from '@/ui';
 
 /** Levantamiento: elige el proyecto donde estás para agregar equipos o dictar un pedido. */
 export default function Levantamientos() {
@@ -37,7 +37,17 @@ export default function Levantamientos() {
         keyExtractor={(f) => String(f.proyecto.id)}
         contentContainerStyle={estilos.lista}
         keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={<Campo placeholder="Buscar por proyecto, cliente o tipo" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />}
+        ListHeaderComponent={
+          <>
+            <Link href="/proyecto/nuevo" asChild>
+              <Pressable accessibilityRole="button" accessibilityLabel="Nuevo levantamiento" style={estilos.nuevoEncabezado}>
+                <Icono nombre="plus.circle.fill" tam={20} tinte={color.primario} />
+                <Text style={estilos.textoNuevo}>Nuevo levantamiento</Text>
+              </Pressable>
+            </Link>
+            <Campo placeholder="Buscar por proyecto, cliente o tipo" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
+          </>
+        }
         ListEmptyComponent={
           !cargado ? undefined : busqueda ? (
             <Text style={estilos.vacio}>Sin resultados.</Text>
@@ -68,5 +78,6 @@ const estilos = StyleSheet.create({
   lista: { padding: 16, paddingTop: 8, paddingBottom: 24, gap: 10 },
   vacio: { textAlign: 'center', color: color.suave, marginTop: 24 },
   nuevo: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+  nuevoEncabezado: { minHeight: 44, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'flex-end' },
   textoNuevo: { color: color.primario, fontSize: 16, fontWeight: '600' },
 });

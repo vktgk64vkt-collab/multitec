@@ -122,7 +122,8 @@ export default function Inicio() {
             <Text style={estilos.seccion}>En curso</Text>
             <Link href="/proyecto/nuevo" asChild>
               <Pressable accessibilityRole="button" accessibilityLabel="Nuevo levantamiento" style={estilos.nuevo}>
-                <Icono nombre="plus.circle.fill" tam={26} tinte={color.primario} />
+                <Icono nombre="plus.circle.fill" tam={20} tinte={color.primario} />
+                <Text style={estilos.textoNuevo}>Nuevo levantamiento</Text>
               </Pressable>
             </Link>
           </View>
@@ -158,7 +159,7 @@ const estilos = StyleSheet.create({
   aviso: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, marginBottom: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: color.tarjeta, borderLeftWidth: 3, borderLeftColor: color.alerta },
   textoAviso: { fontSize: 15, fontWeight: '600', color: color.texto },
   seccion: { fontSize: 20, fontWeight: '700', color: color.texto },
-  nuevo: { minHeight: 44, minWidth: 44, alignItems: 'flex-end', justifyContent: 'center' },
+  nuevo: { minHeight: 44, minWidth: 44, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'flex-end' },
   textoNuevo: { color: color.primario, fontSize: 16, fontWeight: '600' },
   vacio: { textAlign: 'center', color: color.suave, marginTop: 24 },
 });
