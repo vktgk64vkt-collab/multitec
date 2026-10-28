@@ -22,6 +22,7 @@ export interface LineaPedido {
 export interface ResultadoPedido {
   lineas: LineaPedido[];
   notas: string | null;
+  cliente: string | null; // "para Juan Pérez": para quién es el levantamiento, si se dijo
 }
 
 // ---------- texto ----------
@@ -234,7 +235,7 @@ export function entenderLocal(textoDictado: string, inventario: ArticuloPedido[]
       confianza: !seguro ? 'baja' : mejor.exacto || (mejor.cob >= 0.99 && !empate) ? 'alta' : 'media',
     });
   }
-  return { lineas, notas: null };
+  return { lineas, notas: null, cliente: null };
 }
 
 // ---------- con Claude ----------
@@ -258,6 +259,8 @@ Reglas:
 - "area": si se menciona dónde va ("en la entrada", "bodega"), úsala con la primera letra en mayúscula; si no, null.
 - "texto" es el fragmento dictado que originó la línea.
 - "notas": una frase corta solo si algo del pedido no se pudo interpretar; si no, null.
+- "cliente": el nombre del cliente SOLO si el pedido dice para quién es ("levantamiento para Juan Pérez", "casa de María López"); si no, null.
+- Si el pedido trae una FOTO del sitio, propón qué instalar según lo que se ve (accesos, pasillos, fachada, cuarto de equipos): cámaras donde cubran entradas y perímetro, un NVR, accesorios necesarios, y servicios de instalación. "texto" describe dónde y por qué. Prefiere pocas líneas con sentido sobre una lista larga, y usa confianza "media" o "baja" porque es una propuesta que el técnico revisará.
 
 Formato del inventario, una línea por artículo: id | nombre | apodos | tipo | características (si tiene)
 Las características (por ejemplo PoE o discos que soporta) ayudan a distinguir equipos parecidos.`;
@@ -282,13 +285,14 @@ const ESQUEMA = {
       },
     },
     notas: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    cliente: { anyOf: [{ type: 'string' }, { type: 'null' }] },
   },
-  required: ['lineas', 'notas'],
+  required: ['lineas', 'notas', 'cliente'],
   additionalProperties: false,
 } as const;
 
 /** Cuerpo de la petición a la API de mensajes. Al modelo solo van ids, nombres y apodos: nunca precios, costos ni clientes. */
-export function armarPeticion(texto: string, inventario: ArticuloPedido[], modelo: string, areaActual: string | null) {
+export function armarPeticion(texto: string, inventario: ArticuloPedido[], modelo: string, areaActual: string | null, imagen?: { base64: string; mime: string }) {
   const lista = [...inventario]
     .sort((a, b) => a.id - b.id) // mismo orden siempre: así el inventario se puede guardar en caché entre pedidos
     .map((a) => `${a.id} | ${a.nombre} | ${a.apodos.join('; ')} | ${a.tipo}${a.extras ? ` | ${a.extras}` : ''}`)
@@ -302,7 +306,13 @@ export function armarPeticion(texto: string, inventario: ArticuloPedido[], model
     messages: [
       {
         role: 'user',
-        content: `${areaActual ? `Área en la que está el técnico ahora: ${areaActual}\n\n` : ''}Pedido dictado:\n"""\n${texto.trim()}\n"""`,
+        content: [
+          ...(imagen ? [{ type: 'image', source: { type: 'base64', media_type: imagen.mime, data: imagen.base64 } }] : []),
+          {
+            type: 'text',
+            text: `${areaActual ? `Área en la que está el técnico ahora: ${areaActual}\n\n` : ''}${imagen ? 'Foto del sitio adjunta.\n' : ''}Pedido dictado:\n"""\n${texto.trim() || '(solo la foto)'}\n"""`,
+          },
+        ],
       },
     ],
   };
@@ -310,7 +320,7 @@ export function armarPeticion(texto: string, inventario: ArticuloPedido[], model
 
 /** Valida lo que devolvió Claude: ids que no existen pasan a "no encontrado" y las cantidades se corrigen. */
 export function leerRespuesta(datos: unknown, idsValidos: Set<number>): ResultadoPedido {
-  const d = (datos ?? {}) as { lineas?: unknown; notas?: unknown };
+  const d = (datos ?? {}) as { lineas?: unknown; notas?: unknown; cliente?: unknown };
   if (!Array.isArray(d.lineas)) throw new Error('La respuesta de Claude no tiene el formato esperado.');
   const lineas: LineaPedido[] = d.lineas.map((x: Record<string, unknown>) => {
     const id = typeof x.item_id === 'number' && idsValidos.has(x.item_id) ? x.item_id : null;
@@ -322,5 +332,9 @@ export function leerRespuesta(datos: unknown, idsValidos: Set<number>): Resultad
     const confianza = x.confianza === 'alta' || x.confianza === 'media' || x.confianza === 'baja' ? x.confianza : 'media';
     return { texto: typeof x.texto === 'string' ? x.texto : '', id, cantidad, area, alternativas, confianza: id === null ? 'baja' : confianza };
   });
-  return { lineas, notas: typeof d.notas === 'string' && d.notas.trim() ? d.notas.trim() : null };
+  return {
+    lineas,
+    notas: typeof d.notas === 'string' && d.notas.trim() ? d.notas.trim() : null,
+    cliente: typeof d.cliente === 'string' && d.cliente.trim().length > 1 ? d.cliente.trim().replace(/\s+/g, ' ') : null,
+  };
 }

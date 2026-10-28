@@ -26,6 +26,7 @@ import { listarAreas } from '@/db/levantamiento';
 import { obtenerCondiciones } from '@/db/proyectos';
 import { agruparLineas, aCentavos, sinArea, fechaEn, formatear, formatearFecha, importe, moneda, totales } from '@/dinero';
 import { urlWhatsApp } from '@/contacto';
+import { ofrecerWhatsApp, redactar } from '@/mensajeIA';
 import { obtenerNegocio } from '@/db/negocio';
 import { negocioParaPdf, previsualizar } from '@/pdf';
 import { FilaDeslizable } from '@/deslizar';
@@ -134,6 +135,16 @@ export default function Factura() {
       saldo > 0
         ? `Hola ${f.cliente}, le recordamos la factura ${f.ncf} por ${moneda(f.total_cts)}. Saldo pendiente: ${moneda(saldo)}${f.vence ? `, vence el ${formatearFecha(f.vence)}` : ''}. Gracias.${firma}`
         : `Hola ${f.cliente}, confirmamos el pago completo de la factura ${f.ncf}. Gracias por su confianza.${firma}`;
+    if (saldo > 0) {
+      // cobro: Claude lo redacta con el tono justo (más firme si ya venció); sin Claude sale la plantilla de arriba
+      const { texto, claude } = await redactar(
+        db,
+        'cobro',
+        { cliente: f.cliente, factura: f.ncf, total: moneda(f.total_cts), saldo: moneda(saldo), vence: f.vence ? formatearFecha(f.vence) : null, estado: vencida ? 'ya venció' : 'al día' },
+        mensaje
+      );
+      return ofrecerWhatsApp(f.telefono, texto, claude);
+    }
     const url = urlWhatsApp(f.telefono, mensaje);
     if (!url) return Alert.alert('Sin teléfono', 'Agrega el teléfono del cliente para escribirle por WhatsApp.');
     await Linking.openURL(url).catch(() => Alert.alert('No se pudo abrir WhatsApp', 'Revisa que esté instalado en este iPhone.'));

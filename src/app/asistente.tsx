@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
-import { borrarClave, clavePartida, guardarClave, guardarModelo, leerClave, leerModelo, probarConexion } from '@/claude';
+import { borrarClave, clavePartida, guardarClave, guardarModelo, guardarModoEntender, leerClave, leerModelo, leerModoEntender, probarConexion, type ModoEntender } from '@/claude';
 import { MODELO_BASE, MODELOS_CLAUDE } from '@/pedido';
 import { color } from '@/tema';
 import { Boton, Campo, Chip, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
@@ -13,10 +13,12 @@ export default function Asistente() {
   const [guardada, setGuardada] = useState<string | null>(null);
   const [nueva, setNueva] = useState('');
   const [modelo, setModelo] = useState<string>(MODELO_BASE);
+  const [modo, setModo] = useState<ModoEntender>('claude');
 
   useEffect(() => {
     leerClave().then(setGuardada);
     leerModelo().then(setModelo);
+    leerModoEntender().then(setModo);
   }, []);
 
   async function guardar() {
@@ -80,6 +82,33 @@ export default function Asistente() {
         <Boton texto="Guardar clave" onPress={guardar} />
         {guardada ? <Boton tipo="secundario" texto="Probar conexión" onPress={probar} /> : null}
         {guardada ? <Boton tipo="peligro" texto="Quitar la clave" onPress={quitar} /> : null}
+      </Tarjeta>
+
+      <Tarjeta>
+        <Etiqueta>Al dictar con el micrófono</Etiqueta>
+        <View style={estilos.modelos}>
+          {(
+            [
+              ['claude', 'Claude primero'],
+              ['local', 'Solo el iPhone'],
+            ] as const
+          ).map(([valor, texto]) => (
+            <Chip
+              key={valor}
+              texto={texto}
+              activo={modo === valor}
+              onPress={async () => {
+                setModo(valor);
+                await guardarModoEntender(valor);
+              }}
+            />
+          ))}
+        </View>
+        <Text style={estilos.texto}>
+          {modo === 'claude'
+            ? 'Tu voz siempre la transcribe el iPhone. Después Claude entiende el pedido; si no hay internet o falla, lo entiende el iPhone solo (más básico, pero gratis y sin conexión).'
+            : 'No se usa Claude para dictar: el iPhone entiende el pedido solo. Gratis y sin internet, pero entiende frases más simples.'}
+        </Text>
       </Tarjeta>
 
       <Tarjeta>

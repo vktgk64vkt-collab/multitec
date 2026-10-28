@@ -28,6 +28,7 @@ export function useVoz(alActualizar: (texto: string) => void, alTerminar: (texto
   const reloj = useRef<ReturnType<typeof setTimeout> | null>(null);
   const descartar = useRef(false); // esta sesión terminó mal: no se entrega lo que haya
   const reintentos = useRef(0);
+  const enTelefono = useRef(false); // sin internet: el reconocimiento se hace dentro del iPhone
   const palabras = useRef<string[]>([]);
   const actualizar = useRef(alActualizar);
   const terminar = useRef(alTerminar);
@@ -58,6 +59,7 @@ export function useVoz(alActualizar: (texto: string) => void, alTerminar: (texto
       if (fase.current !== 'libre') return; // otro toque mientras arranca o se cierra: se ignora
       fase.current = 'iniciando';
       palabras.current = claves;
+      enTelefono.current = false; // cada dictado prueba primero con el reconocimiento normal, que entiende mejor
       setAviso(null);
       try {
         const permiso = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
@@ -80,6 +82,7 @@ export function useVoz(alActualizar: (texto: string) => void, alTerminar: (texto
           continuous: true,
           addsPunctuation: true,
           contextualStrings: palabras.current,
+          requiresOnDeviceRecognition: enTelefono.current,
         });
         // si el sistema nunca confirma que empezó, el botón no se queda trabado
         pararReloj();
@@ -150,6 +153,12 @@ export function useVoz(alActualizar: (texto: string) => void, alTerminar: (texto
     if (e.error === 'language-not-supported' && idioma.current === 'es-DO') {
       idioma.current = 'es-US'; // el español dominicano no está disponible en este iPhone: se usa el de EE. UU.
       void iniciar(base.current, palabras.current);
+      return;
+    }
+    // sin internet: se reintenta una vez con el reconocimiento del propio iPhone (si tiene el idioma descargado)
+    if (e.error === 'network' && !enTelefono.current && ExpoSpeechRecognitionModule.supportsOnDeviceRecognition()) {
+      enTelefono.current = true;
+      void pausa(300).then(() => iniciar(base.current, palabras.current));
       return;
     }
     if (reintentable(e.error) && reintentos.current < 1 && estaba !== 'libre') {

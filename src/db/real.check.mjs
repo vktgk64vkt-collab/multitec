@@ -225,4 +225,24 @@ await P.aprobarCotizacion(db, h);
 await E.agregarComprobante(db, h, 'fotos/9.jpg', null, null);
 assert.equal(await P.deshacerAprobacion(db, h), false);
 
+// --- compra a proveedor: suma stock, actualiza costo y recalcula el precio con el margen
+const comprado = await Cat.crearProducto(db, {
+  nombre: 'Cámara IP Bullet 4MPX', tipo: 'equipo', categoria: 'CCTV', stock: 2, descripcion: null, apodos: null, atributos: null,
+  precio_cts: 0, costo_cts: 100000, margen1_pct: 15, margen2_pct: 17.5, margen3_pct: 20,
+  f_tipo: 'Cámara', f_tecnologia: 'IP', f_forma: 'Bullet', f_especificacion: '4MPX', f_marca: null, f_modelo: null,
+});
+const idComprado = comprado.lastInsertRowId;
+await Cat.registrarCompra(db, idComprado, 5, 120000);
+const tras = await Cat.obtenerProducto(db, idComprado);
+assert.deepEqual([tras.stock, tras.costo_cts, tras.precio_cts], [7, 120000, Math.round(120000 * 1.15 * 1.18)]);
+await Cat.registrarCompra(db, idComprado, 1, 0); // sin costo legible: solo el stock
+const sinCosto = await Cat.obtenerProducto(db, idComprado);
+assert.deepEqual([sinCosto.stock, sinCosto.costo_cts, sinCosto.precio_cts], [8, 120000, tras.precio_cts]);
+
+// --- los datos que ve Claude al preguntar
+const { datosParaPreguntar } = await import('./negocioIA.ts');
+const texto = await datosParaPreguntar(db, new Date('2026-10-28T12:00:00'));
+assert.ok(texto.includes('Fecha de hoy: 2026-10-28') && texto.includes('TOTALES:') && texto.includes('COTIZACIONES SIN APROBAR'));
+assert.ok(texto.includes('Casa Juan'), 'las cotizaciones abiertas salen con su nombre');
+
 console.log('real ok');

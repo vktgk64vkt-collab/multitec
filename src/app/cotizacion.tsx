@@ -6,6 +6,10 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-nat
 import { AvisoEjecucion, useEjecucionIniciada } from '@/bloqueo';
 import { intentar } from '@/accion';
 import { Alert } from '@/alert';
+import { revisarCotizacionConClaude } from '@/claude';
+import { obtenerCliente } from '@/db/clientes';
+import type { Observacion } from '@/ia';
+import { empresaActual, ofrecerWhatsApp, redactar } from '@/mensajeIA';
 import { listarCatalogo, type Producto, type TipoItem } from '@/db/catalogo';
 import {
   actualizarPrecio,
@@ -25,7 +29,7 @@ import {
 import { aplicarKit, eliminarKit, guardarKit, listarKits, type Kit } from '@/db/kits';
 import { listarAreas } from '@/db/levantamiento';
 import { aprobarCotizacion, guardarCondiciones, marcarEnviada, obtenerCondiciones, obtenerProyecto } from '@/db/proyectos';
-import { aCentavos, fechaEn, formatear, importe, ITBIS_PCT, moneda, precioParaProyecto, totales } from '@/dinero';
+import { aCentavos, diasDesde, fechaEn, formatear, importe, ITBIS_PCT, moneda, precioParaProyecto, totales } from '@/dinero';
 import { negocioParaPdf, previsualizar } from '@/pdf';
 import { FilaDeslizable } from '@/deslizar';
 import { BotonDictado } from '@/dictado';
@@ -33,7 +37,7 @@ import { detalleArticulo } from '@/nomenclatura';
 import { agruparPorTrabajo, etiquetaTrabajo, hayVariosTrabajos, limpiarTrabajo, trabajoAuto } from '@/trabajos';
 import { elegirTrabajoDe, SelectorTrabajo } from '@/trabajosUi';
 import { color } from '@/tema';
-import { Boton, Campo, Chip, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
+import { Boton, Campo, Chip, Etiqueta, FilaAcciones, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const SECCIONES: { tipo: TipoItem; titulo: string }[] = [
   { tipo: 'equipo', titulo: 'Equipos' },
@@ -66,6 +70,7 @@ export default function Cotizacion() {
   const [descripcion, setDescripcion] = useState('');
   const [cantidad, setCantidad] = useState('1');
   const [precio, setPrecio] = useState('');
+  const [revisionIA, setRevisionIA] = useState<{ resumen: string; observaciones: Observacion[] } | null>(null);
 
   const cargar = useCallback(
     () =>
@@ -204,6 +209,28 @@ export default function Cotizacion() {
   async function aprobar() {
     if (lineas.length === 0) return Alert.alert('Nada que aprobar', 'Agrega líneas a la cotización primero.');
     if (await aprobarCotizacion(db, proyectoId)) router.replace({ pathname: '/proyecto/[id]', params: { id: proyectoId } });
+  }
+
+  /** Claude mira la cotización antes de enviarla: lo que falta, cantidades que no cuadran, márgenes bajos. */
+  async function revisar() {
+    if (lineas.length === 0) return Alert.alert('Nada que revisar', 'Agrega líneas a la cotización primero.');
+    setRevisionIA(
+      await revisarCotizacionConClaude(
+        lineas.map((l) => ({ descripcion: l.descripcion, cantidad: l.cantidad, precio_cts: l.precio_cts, costo_cts: l.costo_cts, tipo: l.tipo, trabajo: l.trabajo }))
+      )
+    );
+  }
+
+  /** Mensaje de WhatsApp para dar seguimiento a la cotización, redactado por Claude (o con plantilla si no hay Claude). */
+  async function seguimiento() {
+    const p = await obtenerProyecto(db, proyectoId);
+    if (!p || lineas.length === 0) return Alert.alert('Nada que dar seguimiento', 'Agrega líneas a la cotización primero.');
+    const cliente = await obtenerCliente(db, p.cliente_id);
+    const dias = diasDesde(p.enviada_en);
+    const firma = (await empresaActual(db)) ?? '';
+    const plantilla = `Hola ${p.cliente}, le escribimos para dar seguimiento a la cotización "${p.nombre}" por ${moneda(t.total)}. Quedamos atentos a cualquier duda o ajuste que necesite. Gracias.${firma ? `\n— ${firma}` : ''}`;
+    const { texto, claude } = await redactar(db, 'seguimiento', { cliente: p.cliente, trabajo: p.nombre, total: moneda(t.total), enviada: dias === null ? 'aún no enviada' : `hace ${dias} días` }, plantilla);
+    ofrecerWhatsApp(cliente?.telefono, texto, claude);
   }
 
   async function pdf() {
@@ -438,6 +465,20 @@ export default function Cotizacion() {
         {hayCostos ? <Text style={[estilos.detalle, { color: color.ok }]}>Ganancia estimada (solo tú la ves): {moneda(Math.round(ganancia))}</Text> : null}
       </Tarjeta>
 
+      {revisionIA ? (
+        <Tarjeta>
+          <Etiqueta>Revisión de Claude</Etiqueta>
+          <Text style={estilos.detalle}>{revisionIA.resumen}</Text>
+          {revisionIA.observaciones.length === 0 ? <Text style={[estilos.nombre, { color: color.ok }]}>No encontré nada que corregir.</Text> : null}
+          {revisionIA.observaciones.map((o, i) => (
+            <Text key={i} style={[estilos.revision, { borderLeftColor: o.gravedad === 'alta' ? color.peligro : o.gravedad === 'media' ? color.alerta : color.suave }]}>
+              {o.texto}
+            </Text>
+          ))}
+          <Text style={estilos.pista}>Son sugerencias: tú decides qué cambiar.</Text>
+        </Tarjeta>
+      ) : null}
+
       <Tarjeta>
         <Etiqueta>Condiciones (salen en el PDF)</Etiqueta>
         <Campo
@@ -446,8 +487,14 @@ export default function Cotizacion() {
           onChangeText={setCondiciones}
           onEndEditing={() => intentar(() => guardarCondiciones(db, proyectoId, condiciones))}
         />
-        <Boton tipo="secundario" texto="Compartir PDF" onPress={pdf} />
-        <Boton texto="Aprobada" onPress={aprobar} />
+        <FilaAcciones
+          acciones={[
+            { icono: 'square.and.arrow.up', texto: 'PDF', onPress: pdf },
+            { icono: 'sparkles', texto: 'Revisar', onPress: revisar },
+            { icono: 'message', texto: 'Seguimiento', onPress: seguimiento },
+            { icono: 'checkmark.circle.fill', texto: 'Aprobada', onPress: aprobar, tono: 'ok', principal: true },
+          ]}
+        />
       </Tarjeta>
     </ScrollView>
     <BotonDictado proyectoId={proyectoId} />
@@ -465,6 +512,7 @@ const estilos = StyleSheet.create({
   detalle: { fontSize: 14, color: color.suave },
   aviso: { fontSize: 13, color: color.alerta },
   total: { fontSize: 22, fontWeight: '700', color: color.texto },
+  revision: { fontSize: 14, color: color.texto, borderLeftWidth: 3, paddingLeft: 10, paddingVertical: 2 },
   moverTrabajo: { minHeight: 32, justifyContent: 'center' },
   pista: { fontSize: 12, color: color.suave, textAlign: 'center' },
   vacio: { textAlign: 'center', color: color.suave },

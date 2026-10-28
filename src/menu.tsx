@@ -5,15 +5,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { haptico } from '@/accion';
 import { color } from '@/tema';
+import { Icono, Presionable } from '@/ui';
 
-const OPCIONES = [
-  { ruta: '/clientes', titulo: 'Clientes', detalle: 'Tus clientes y sus proyectos' },
-  { ruta: '/inventario', titulo: 'Inventario', detalle: 'Equipos y servicios, precios y stock' },
-  { ruta: '/reportes', titulo: 'Reportes', detalle: 'Facturado por mes y mejores clientes' },
-  { ruta: '/negocio', titulo: 'Mi empresa', detalle: 'Logo, color y datos de tus documentos' },
-  { ruta: '/asistente', titulo: 'Asistente Claude', detalle: 'Clave de API para dictar pedidos' },
-  { ruta: '/respaldo', titulo: 'Respaldo de datos', detalle: 'Exportar o restaurar tu información' },
-] as const;
+const OPCIONES: { ruta: string; titulo: string; icono: Parameters<typeof Icono>[0]['nombre'] }[] = [
+  { ruta: '/clientes', titulo: 'Clientes', icono: 'person.2' },
+  { ruta: '/inventario', titulo: 'Inventario', icono: 'shippingbox' },
+  { ruta: '/preguntar', titulo: 'Pregúntale a Claude', icono: 'bubble.left.and.text.bubble.right' },
+  { ruta: '/compra', titulo: 'Compra a proveedor', icono: 'doc.text.viewfinder' },
+  { ruta: '/reportes', titulo: 'Reportes', icono: 'chart.bar' },
+  { ruta: '/negocio', titulo: 'Mi empresa', icono: 'building.2' },
+  { ruta: '/asistente', titulo: 'Asistente Claude', icono: 'sparkles' },
+  { ruta: '/respaldo', titulo: 'Respaldo de datos', icono: 'externaldrive' },
+];
 
 /**
  * Botón flotante arriba a la derecha con todo lo que no va en la barra de abajo: clientes, inventario, reportes,
@@ -25,16 +28,17 @@ export function BotonMenu() {
 
   return (
     <>
-      <Pressable
+      <Presionable
         accessibilityRole="button"
         accessibilityLabel="Menú: clientes, inventario, reportes y configuración"
+        hundir={0.9}
         style={[estilos.boton, { top: top + 8 }]}
         onPress={() => {
           haptico();
           setAbierto(true);
         }}>
-        <Text style={estilos.puntos}>•••</Text>
-      </Pressable>
+        <Icono nombre="ellipsis" tam={18} />
+      </Presionable>
 
       <Modal transparent animationType="fade" visible={abierto} onRequestClose={() => setAbierto(false)}>
         <Pressable accessibilityLabel="Cerrar menú" style={estilos.fondo} onPress={() => setAbierto(false)}>
@@ -46,10 +50,10 @@ export function BotonMenu() {
                 style={[estilos.fila, i > 0 && estilos.separador]}
                 onPress={() => {
                   setAbierto(false);
-                  router.push(o.ruta);
+                  router.push(o.ruta as never);
                 }}>
+                <Icono nombre={o.icono} tam={18} tinte={color.primario} />
                 <Text style={estilos.titulo}>{o.titulo}</Text>
-                <Text style={estilos.detalle}>{o.detalle}</Text>
               </Pressable>
             ))}
           </View>
@@ -70,18 +74,17 @@ const estilos = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
     zIndex: 10,
   },
-  puntos: { fontSize: 14, fontWeight: '800', color: color.texto, letterSpacing: 1 },
   fondo: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' },
   panel: {
     position: 'absolute',
     right: 16,
-    width: 290,
+    width: 230,
     borderRadius: 16,
     backgroundColor: color.tarjeta,
     paddingVertical: 4,
@@ -91,8 +94,7 @@ const estilos = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 8,
   },
-  fila: { paddingHorizontal: 16, paddingVertical: 12, minHeight: 56, justifyContent: 'center' },
+  fila: { paddingHorizontal: 16, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 12 },
   separador: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.borde },
   titulo: { fontSize: 16, fontWeight: '600', color: color.texto },
-  detalle: { fontSize: 12, color: color.suave, marginTop: 1 },
 });

@@ -1,3 +1,5 @@
+import { StyleSheet } from 'react-native';
+
 export const color = {
   primario: '#0f2130',
   fondo: '#f6f0e8',
@@ -24,12 +26,11 @@ export const colorEstado: Record<string, string> = {
   cerrado: color.ok,
 };
 
+/** Tarjeta plana: sin sombra, solo un filo fino. Menos ruido y más aire. */
 export const tarjeta = {
   backgroundColor: color.tarjeta,
-  borderRadius: 16,
-  padding: 16,
-  shadowColor: '#000',
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  shadowOffset: { width: 0, height: 2 },
+  borderRadius: 14,
+  padding: 14,
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: color.borde,
 } as const;

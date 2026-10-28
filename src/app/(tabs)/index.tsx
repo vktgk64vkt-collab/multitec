@@ -13,6 +13,7 @@ import { paleta } from '@/marca';
 import { DIAS_ENTRE_RESPALDOS, diasSinRespaldo } from '@/respaldo';
 import { BotonDictado } from '@/dictado';
 import { BotonMenu } from '@/menu';
+import { Icono } from '@/ui';
 import { confirmarEliminarProyecto, FilaProyecto } from '@/proyectoUi';
 import { color } from '@/tema';
 
@@ -105,7 +106,7 @@ export default function Inicio() {
                   {plural(porResponder, 'cotización', 'cotizaciones')} {porResponder === 1 ? 'espera' : 'esperan'} respuesta
                   {sinRespuesta > 0 ? ` · ${sinRespuesta} sin respuesta hace más de 7 días` : ''}
                 </Text>
-                <Text style={estilos.textoNuevo}>Ver ›</Text>
+                <Icono nombre="chevron.right" tam={13} tinte={color.primario} />
               </Pressable>
             </Link>
           ) : null}
@@ -113,15 +114,15 @@ export default function Inicio() {
             <Link href="/respaldo" asChild>
               <Pressable accessibilityRole="button" style={[estilos.aviso, { borderLeftColor: color.peligro }]}>
                 <Text style={estilos.textoAviso}>{sinRespaldo === null ? 'Aún no has hecho un respaldo' : `Hace ${sinRespaldo} días sin respaldo`}</Text>
-                <Text style={estilos.textoNuevo}>Respaldar ›</Text>
+                <Icono nombre="chevron.right" tam={13} tinte={color.primario} />
               </Pressable>
             </Link>
           ) : null}
           <View style={estilos.encabezadoLista}>
             <Text style={estilos.seccion}>En curso</Text>
             <Link href="/proyecto/nuevo" asChild>
-              <Pressable accessibilityRole="button" style={estilos.nuevo}>
-                <Text style={estilos.textoNuevo}>+ Nuevo levantamiento</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Nuevo levantamiento" style={estilos.nuevo}>
+                <Icono nombre="plus.circle.fill" tam={26} tinte={color.primario} />
               </Pressable>
             </Link>
           </View>
@@ -154,10 +155,10 @@ const estilos = StyleSheet.create({
   resumen: { fontSize: 14, fontWeight: '600', opacity: 0.9 },
   lista: { padding: 16, paddingBottom: 24, gap: 10 },
   encabezadoLista: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
-  aviso: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, marginBottom: 10, paddingHorizontal: 14, borderRadius: 14, backgroundColor: color.tarjeta, borderLeftWidth: 4, borderLeftColor: color.alerta },
+  aviso: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, marginBottom: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: color.tarjeta, borderLeftWidth: 3, borderLeftColor: color.alerta },
   textoAviso: { fontSize: 15, fontWeight: '600', color: color.texto },
   seccion: { fontSize: 20, fontWeight: '700', color: color.texto },
-  nuevo: { minHeight: 44, justifyContent: 'center' },
+  nuevo: { minHeight: 44, minWidth: 44, alignItems: 'flex-end', justifyContent: 'center' },
   textoNuevo: { color: color.primario, fontSize: 16, fontWeight: '600' },
   vacio: { textAlign: 'center', color: color.suave, marginTop: 24 },
 });

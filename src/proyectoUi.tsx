@@ -8,6 +8,7 @@ import { FilaDeslizable } from '@/deslizar';
 import { eliminarProyecto, fotosDelProyecto, PRIORIDADES, type Proyecto } from '@/db/proyectos';
 import { borrarFotos } from '@/fotos';
 import { color, colorEstado, tarjeta } from '@/tema';
+import { Aparece, Icono, Presionable } from '@/ui';
 
 /** Solo se destacan las prioridades que se salen de lo normal: la media no lleva insignia. */
 export function InsigniaPrioridad({ prioridad }: { prioridad: number }) {
@@ -32,12 +33,12 @@ export function FilaProyecto({
   detalle?: string;
   href: Href;
   onEliminar?: () => unknown;
-  /** Un botón de un toque en la propia fila (por ejemplo "Aprobada"). */
-  accion?: { texto: string; onPress: () => unknown };
+  /** Un botón de un toque en la propia fila (por ejemplo "Aprobada"): solo icono, con el texto para VoiceOver. */
+  accion?: { texto: string; onPress: () => unknown; icono?: Parameters<typeof Icono>[0]['nombre'] };
 }) {
   const fila = (
     <Link href={href} asChild>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${proyecto.nombre}, ${proyecto.cliente}`} style={[tarjeta, estilos.fila]}>
+      <Presionable accessibilityRole="button" accessibilityLabel={`${proyecto.nombre}, ${proyecto.cliente}`} hundir={0.98} style={[tarjeta, estilos.fila]}>
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={estilos.nombre}>{proyecto.nombre}</Text>
           <Text style={estilos.detalle}>
@@ -60,14 +61,14 @@ export function FilaProyecto({
                 haptico();
                 accion.onPress();
               }}>
-              <Text style={estilos.textoAccion}>{accion.texto}</Text>
+              <Icono nombre={accion.icono ?? 'checkmark'} tam={18} tinte="#fff" />
             </Pressable>
           ) : null}
         </View>
-      </Pressable>
+      </Presionable>
     </Link>
   );
-  return onEliminar ? <FilaDeslizable onAccion={onEliminar}>{fila}</FilaDeslizable> : fila;
+  return <Aparece>{onEliminar ? <FilaDeslizable onAccion={onEliminar}>{fila}</FilaDeslizable> : fila}</Aparece>;
 }
 
 /** Pide confirmación y borra el proyecto; uno con factura no se borra (se anula la factura). `despues` recarga la lista. */
@@ -91,13 +92,12 @@ export function confirmarEliminarProyecto(db: SQLiteDatabase, p: Proyecto, despu
 
 const estilos = StyleSheet.create({
   fila: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  nombre: { fontSize: 17, fontWeight: '600', color: color.texto },
+  nombre: { fontSize: 16, fontWeight: '600', color: color.texto },
   detalle: { fontSize: 14, color: color.suave },
   linea: { fontSize: 13, fontWeight: '600', color: color.primario, marginTop: 2 },
   derecha: { alignItems: 'flex-end', gap: 4 },
   estado: { fontSize: 12, fontWeight: '600', color: color.primario, textTransform: 'capitalize' },
-  accion: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 10, backgroundColor: color.ok },
-  textoAccion: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
+  accion: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20, backgroundColor: color.ok },
   insignia: { fontSize: 11, fontWeight: '800', letterSpacing: 1, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, overflow: 'hidden' },
   alta: { backgroundColor: color.peligro, color: '#ffffff' },
   baja: { backgroundColor: color.fondo, color: color.suave },

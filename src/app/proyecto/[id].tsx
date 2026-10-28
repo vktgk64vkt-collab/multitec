@@ -1,7 +1,7 @@
 import { Link, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
 import { resumenProyecto, type ResumenProyecto } from '@/db/resumen';
@@ -25,7 +25,7 @@ import { siguientePaso, type Paso } from '@/flujo';
 import { enlaceDeBusqueda } from '@/ubicacion';
 import { BotonDictado } from '@/dictado';
 import { color, tarjeta } from '@/tema';
-import { Boton, Chip, Etiqueta } from '@/ui';
+import { Aparece, Boton, FilaAcciones, Icono, Presionable, Segmentos, type AccionRapida } from '@/ui';
 
 const RUTAS = { levantamiento: '/levantamiento', cotizacion: '/cotizacion', ejecucion: '/ejecucion', factura: '/factura' } as const;
 // los destinos que no abren otra pantalla (aprobar, reabrir, cerrar) se resuelven antes de navegar
@@ -172,6 +172,16 @@ export default function DetalleProyecto() {
     ]);
   }
 
+  const puedeDeshacer = !esCotizacion && resumen && !resumen.factura && resumen.ejecucion && resumen.ejecucion.cambios === 0 && resumen.ejecucion.comprobantes === 0;
+  const cerrado = proyecto.estado === 'cerrado';
+  const acciones: AccionRapida[] = [
+    ...(esCotizacion && resumen && resumen.lineas > 0 && paso?.destino !== 'aprobar' ? [{ icono: 'checkmark.circle.fill' as const, texto: 'Aprobada', onPress: aprobar, tono: 'ok' as const, principal: true }] : []),
+    ...(esCotizacion ? [] : [{ icono: (cerrado ? 'arrow.uturn.backward' : 'lock') as 'lock', texto: cerrado ? 'Reabrir' : 'Cerrar', onPress: () => (cerrado ? reabrir() : elegirEstado('cerrado')) }]),
+    ...(puedeDeshacer ? [{ icono: 'arrow.uturn.backward.circle' as const, texto: 'A cotización', onPress: confirmarDeshacer }] : []),
+    { icono: 'doc.on.doc', texto: 'Duplicar', onPress: duplicar },
+    { icono: 'trash', texto: 'Eliminar', onPress: confirmarEliminar, tono: 'peligro' },
+  ];
+
   return (
     <View style={{ flex: 1 }}>
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={estilos.contenedor}>
@@ -182,7 +192,7 @@ export default function DetalleProyecto() {
       </Text>
 
       {mapa ? (
-        <Boton tipo="secundario" texto="Cómo llegar" onPress={() => Linking.openURL(mapa).catch(() => Alert.alert('No se pudo abrir', 'Revisa que Google Maps o Safari estén disponibles en este iPhone.'))} />
+        <Boton tipo="secundario" icono="location" texto="Cómo llegar" onPress={() => Linking.openURL(mapa).catch(() => Alert.alert('No se pudo abrir', 'Revisa que Google Maps o Safari estén disponibles en este iPhone.'))} />
       ) : null}
 
       {paso ? (
@@ -195,49 +205,46 @@ export default function DetalleProyecto() {
       ) : null}
 
       <View style={estilos.pasos}>
-        {(esCotizacion ? pasos.slice(0, 3) : pasos).map((p) => (
-          <Link key={p.ruta} href={{ pathname: p.ruta, params: { proyecto: proyecto.id } }} asChild>
-            <Pressable accessibilityRole="button" accessibilityLabel={`${p.titulo}. ${p.detalle}`} style={[tarjeta, estilos.paso]}>
-              <View style={{ flex: 1 }}>
-                <Text style={estilos.titulo}>{p.titulo}</Text>
-                <Text style={estilos.detalle}>{p.detalle}</Text>
-              </View>
-              <Text style={estilos.flecha}>›</Text>
-            </Pressable>
-          </Link>
+        {(esCotizacion ? pasos.slice(0, 3) : pasos).map((p, i) => (
+          <Aparece key={p.ruta} indice={i}>
+            <Link href={{ pathname: p.ruta, params: { proyecto: proyecto.id } }} asChild>
+              <Presionable accessibilityRole="button" accessibilityLabel={`${p.titulo}. ${p.detalle}`} style={[tarjeta, estilos.paso]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={estilos.titulo}>{p.titulo}</Text>
+                  <Text style={estilos.detalle}>{p.detalle}</Text>
+                </View>
+                <Icono nombre="chevron.right" tam={13} tinte={color.suave} />
+              </Presionable>
+            </Link>
+          </Aparece>
         ))}
       </View>
 
       {esCotizacion ? (
         <>
-          <Etiqueta>Respuesta del cliente</Etiqueta>
-          <View style={estilos.chips}>
-            {(['borrador', 'enviada', 'rechazada'] as const).map((e) => (
-              <Chip key={e} borde texto={e} activo={e === proyecto.cot_estado} onPress={() => elegirRespuesta(e)} />
-            ))}
-          </View>
-          {resumen && resumen.lineas > 0 && paso?.destino !== 'aprobar' ? <Boton texto="Aprobada" onPress={aprobar} /> : null}
+          <Segmentos
+            valor={proyecto.cot_estado}
+            onElegir={elegirRespuesta}
+            opciones={[
+              { valor: 'borrador', texto: 'Borrador', icono: 'pencil' },
+              { valor: 'enviada', texto: 'Enviada', icono: 'paperplane' },
+              { valor: 'rechazada', texto: 'Rechazada', icono: 'xmark' },
+            ]}
+          />
         </>
-      ) : (
-        <Boton
-          tipo="secundario"
-          texto={proyecto.estado === 'cerrado' ? 'Reabrir proyecto' : 'Cerrar proyecto'}
-          onPress={() => (proyecto.estado === 'cerrado' ? reabrir() : elegirEstado('cerrado'))}
-        />
-      )}
-
-      <Etiqueta>Prioridad</Etiqueta>
-      <View style={estilos.chips}>
-        {[2, 1, 0].map((n) => (
-          <Chip key={n} borde texto={PRIORIDADES[n]} activo={proyecto.prioridad === n} onPress={() => elegirPrioridad(n)} />
-        ))}
-      </View>
-
-      {!esCotizacion && resumen && !resumen.factura && resumen.ejecucion && resumen.ejecucion.cambios === 0 && resumen.ejecucion.comprobantes === 0 ? (
-        <Boton tipo="secundario" texto="Volver a cotización (deshacer Aprobada)" onPress={confirmarDeshacer} />
       ) : null}
-      <Boton tipo="secundario" texto={esCotizacion ? 'Duplicar cotización' : 'Duplicar proyecto'} onPress={duplicar} />
-      <Boton tipo="peligro" texto={esCotizacion ? 'Eliminar cotización' : 'Eliminar proyecto'} onPress={confirmarEliminar} />
+
+      <Segmentos
+        valor={String(proyecto.prioridad)}
+        onElegir={(v) => elegirPrioridad(Number(v))}
+        opciones={[
+          { valor: '2', texto: PRIORIDADES[2], icono: 'flame' },
+          { valor: '1', texto: PRIORIDADES[1], icono: 'minus' },
+          { valor: '0', texto: PRIORIDADES[0], icono: 'arrow.down' },
+        ]}
+      />
+
+      <FilaAcciones acciones={acciones} />
       <Text style={estilos.creado}>Creado: {formatearFecha(proyecto.creado_en)}</Text>
     </ScrollView>
     <BotonDictado proyectoId={proyecto.id} />
@@ -247,7 +254,7 @@ export default function DetalleProyecto() {
 
 const estilos = StyleSheet.create({
   contenedor: { padding: 16, gap: 12 },
-  nombre: { fontSize: 28, fontWeight: '800', color: color.texto },
+  nombre: { fontSize: 26, fontWeight: '700', color: color.texto },
   detalle: { fontSize: 14, color: color.suave },
   pasos: { gap: 10, marginTop: 4 },
   siguiente: { gap: 6, borderLeftWidth: 4, borderLeftColor: color.primario },

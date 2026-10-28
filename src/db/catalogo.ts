@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { precioDesdeCosto } from '../dinero';
 import { prefijoCodigo } from '../nomenclatura';
 
 export const TIPOS_ITEM = ['equipo', 'servicio'] as const;
@@ -76,6 +77,21 @@ export function actualizarProducto(db: SQLiteDatabase, id: number, d: DatosProdu
 /** El artículo ya existía: suma la cantidad que entra al stock (si no llevaba conteo, empieza con esa cantidad). */
 export function sumarStock(db: SQLiteDatabase, id: number, cantidad: number) {
   return db.runAsync('UPDATE catalogo SET stock = COALESCE(stock, 0) + ? WHERE id = ?', cantidad, id);
+}
+
+/**
+ * Compra a un proveedor: suma lo que entra al stock (los servicios no llevan stock) y, si se conoce el costo, lo actualiza
+ * y recalcula el precio 1 con el margen del artículo. Un artículo de precio fijo (sin margen) conserva su precio.
+ */
+export async function registrarCompra(db: SQLiteDatabase, id: number, cantidad: number, costoCts: number) {
+  const p = await obtenerProducto(db, id);
+  if (!p) return;
+  const precio = costoCts > 0 && p.margen1_pct !== null ? precioDesdeCosto(costoCts, p.margen1_pct) : p.precio_cts;
+  await db.runAsync(
+    `UPDATE catalogo SET costo_cts = CASE WHEN ? > 0 THEN ? ELSE costo_cts END, precio_cts = ?,
+       stock = CASE WHEN tipo = 'servicio' THEN stock ELSE COALESCE(stock, 0) + ? END WHERE id = ?`,
+    costoCts, costoCts, precio, cantidad, id
+  );
 }
 
 export function eliminarProducto(db: SQLiteDatabase, id: number) {

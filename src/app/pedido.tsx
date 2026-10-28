@@ -7,11 +7,13 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { intentar, mensajeError } from '@/accion';
 import { Alert } from '@/alert';
 import { aDatosProducto, pareceArticuloNuevo, type BorradorArticulo } from '@/articuloVoz';
-import { entenderArticuloConClaude, entenderConClaude, leerClave } from '@/claude';
+import { entenderArticuloConClaude, entenderConClaude, leerClave, leerModoEntender } from '@/claude';
 import { crearProducto, type DatosProducto, listarCatalogo, type Producto } from '@/db/catalogo';
 import { obtenerOpciones } from '@/db/cotizacion';
 import { crearPartida } from '@/db/levantamiento';
-import type { Proyecto } from '@/db/proyectos';
+import { buscarOCrearCliente } from '@/db/clientes';
+import { crearProyecto, nombreAutomatico, TIPOS, type Proyecto } from '@/db/proyectos';
+import { tomarImagen } from '@/imagenIA';
 import { proyectosConResumen } from '@/db/resumen';
 import { IconoMic } from '@/dictado';
 import { moneda, precioParaProyecto } from '@/dinero';
@@ -58,10 +60,14 @@ export default function Pedido() {
   const aprobada = useEjecucionIniciada(proyectoId);
   const [inventario, setInventario] = useState<Producto[] | null>(null);
   const [conClave, setConClave] = useState(false);
+  const [soloLocal, setSoloLocal] = useState(false); // ajuste: entender sin Claude aunque haya clave
+  const usaClaude = conClave && !soloLocal;
   const [texto, setTexto] = useState('');
   const [area, setArea] = useState(areaInicial ?? '');
   const [revision, setRevision] = useState<Revision[] | null>(null);
   const [notas, setNotas] = useState<string | null>(null);
+  const [clienteNuevo, setClienteNuevo] = useState<string | null>(null); // "para Juan Pérez": se ofrece crear su levantamiento
+  const [crearNuevo, setCrearNuevo] = useState(false);
   const [trabajando, setTrabajando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [articulo, setArticulo] = useState<{ borrador: BorradorArticulo; datos: DatosProducto; existente: Producto | null } | null>(null);
@@ -74,6 +80,7 @@ export default function Pedido() {
     useCallback(() => {
       listarCatalogo(db).then(setInventario);
       leerClave().then((c) => setConClave(!!c));
+      leerModoEntender().then((m) => setSoloLocal(m === 'local'));
       // levantamientos donde todavía se puede agregar (cotizaciones sin aprobar), el más urgente primero
       proyectosConResumen(db, 'activos', 'cotizacion').then((r) => {
         const libres = r.map((x) => x.proyecto);
@@ -88,6 +95,8 @@ export default function Pedido() {
   function armarRevision(r: ResultadoPedido) {
     if (r.lineas.length === 0) return Alert.alert('No entendí ningún equipo', 'Prueba dictando de nuevo, por ejemplo: "3 cámaras turret y un gabinete 4u pequeño".');
     setNotas(r.notas);
+    setClienteNuevo(r.cliente);
+    setCrearNuevo(!!r.cliente);
     setRevision(
       r.lineas.map((l, i) => ({
         clave: i,
@@ -102,7 +111,7 @@ export default function Pedido() {
   }
 
   /** Entiende lo dictado. Si Claude falla (sin internet, sin saldo...), cae al entendedor local y lo avisa. */
-  async function entender(dictado: string, conClaude = conClave) {
+  async function entender(dictado: string, conClaude = usaClaude) {
     const limpio = numerosEnDigitos(dictado);
     if (!limpio.trim()) return Alert.alert('Falta el pedido', 'Toca el micrófono y habla, o escribe lo que necesitas.');
     setCreado(null);
@@ -118,8 +127,27 @@ export default function Pedido() {
         armarRevision(await entenderConClaude(limpio, articulos, area.trim() || null));
       } catch (e) {
         armarRevision(entenderLocal(limpio, articulos));
-        setAviso(`No pude usar Claude: ${mensajeError(e)} Entendí el pedido sin él; revísalo con más cuidado.`);
+        setAviso(`${mensajeError(e)} Entendí el pedido con el iPhone, sin Claude; revísalo con más cuidado.`);
       }
+    } finally {
+      setTrabajando(false);
+    }
+  }
+
+  /** Foto del sitio: Claude propone qué instalar y tú lo revisas como cualquier pedido. */
+  async function entenderFoto(origen: 'camara' | 'galeria') {
+    if (!usaClaude) return Alert.alert('Hace falta Claude', 'La foto del sitio la interpreta Claude. Agrega tu clave en Más, Asistente Claude (y deja "Claude primero").');
+    if (!inventario || inventario.length === 0) return Alert.alert('El inventario está vacío', 'Primero agrega tus equipos y servicios en el menú, Inventario.');
+    const imagen = await tomarImagen(origen);
+    if (!imagen) return;
+    setAviso(null);
+    setArticulo(null);
+    setCreado(null);
+    setTrabajando(true);
+    try {
+      armarRevision(await entenderConClaude(numerosEnDigitos(texto), inventario.map(aArticulo), area.trim() || null, imagen));
+    } catch (e) {
+      setAviso(mensajeError(e));
     } finally {
       setTrabajando(false);
     }
@@ -183,16 +211,31 @@ export default function Pedido() {
   const listas = (revision ?? []).filter((r) => r.item || r.manual);
   const sinResolver = (revision ?? []).length - listas.length;
 
+  /** El tipo de proyecto sale de la categoría que más se repite en las líneas (CCTV, Alarma...); si no cuadra, "Otro". */
+  function tipoDeLasLineas(): string {
+    const cuenta = new Map<string, number>();
+    for (const r of listas) if (r.item?.categoria) cuenta.set(r.item.categoria, (cuenta.get(r.item.categoria) ?? 0) + r.cantidad);
+    const mejor = [...cuenta].sort((a, b) => b[1] - a[1])[0]?.[0];
+    return (TIPOS as readonly string[]).includes(mejor ?? '') ? (mejor as string) : 'Otro';
+  }
+
   async function agregar() {
-    if (proyectoId === null) return Alert.alert('Elige el levantamiento', 'Toca el levantamiento al que quieres agregar estos equipos.');
+    const nuevo = crearNuevo && clienteNuevo;
+    if (proyectoId === null && !nuevo) return Alert.alert('Elige el levantamiento', 'Toca el levantamiento al que quieres agregar estos equipos.');
     if (listas.length === 0) return Alert.alert('Nada que agregar', 'Elige un artículo para cada línea, o márcala "Agregar a mano".');
-    const op = await obtenerOpciones(db, proyectoId);
+    let destino = proyectoId as number;
+    if (nuevo) {
+      const tipo = tipoDeLasLineas();
+      destino = await crearProyecto(db, await buscarOCrearCliente(db, clienteNuevo), nombreAutomatico(tipo, clienteNuevo), tipo);
+    }
+    const op = await obtenerOpciones(db, destino);
     for (const r of listas) {
       const datos = { area: r.area.trim() || 'General', equipo: r.item ? r.item.nombre : capitalizar(r.texto), cantidad: r.cantidad, notas: null, foto_uri: null };
-      if (r.item) await crearPartida(db, proyectoId, datos, r.item, precioParaProyecto(r.item, op.nivel, op.con_itbis, op.impuesto_pct));
-      else await crearPartida(db, proyectoId, datos);
+      if (r.item) await crearPartida(db, destino, datos, r.item, precioParaProyecto(r.item, op.nivel, op.con_itbis, op.impuesto_pct));
+      else await crearPartida(db, destino, datos);
     }
-    router.back();
+    if (nuevo) router.replace({ pathname: '/proyecto/[id]', params: { id: destino } });
+    else router.back();
   }
 
   if (aprobada && proyectoId !== null) return <AvisoEjecucion proyectoId={proyectoId} />;
@@ -247,6 +290,14 @@ export default function Pedido() {
             <Text style={estilos.detalle}>También puedes decir: «agrégame una cámara IP de 4 megapíxeles bullet al inventario».</Text>
             <Boton texto="Entender con Claude" onPress={() => entender(texto, true)} />
             <Boton tipo="secundario" texto="Entender sin Claude (gratis, sin internet)" onPress={() => entender(texto, false)} />
+            <View style={estilos.fila}>
+              <View style={{ flex: 1 }}>
+                <Boton tipo="secundario" icono="camera" texto="Foto del sitio" onPress={() => entenderFoto('camara')} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Boton tipo="secundario" icono="photo" texto="De la galería" onPress={() => entenderFoto('galeria')} />
+              </View>
+            </View>
           </>
         ) : (
           <>
@@ -297,6 +348,16 @@ export default function Pedido() {
         <>
           <Etiqueta>Revisa antes de agregar</Etiqueta>
           {notas ? <Text style={estilos.nota}>{notas}</Text> : null}
+          {clienteNuevo ? (
+            <Tarjeta style={{ gap: 6 }}>
+              <Text style={estilos.nombre}>Para «{clienteNuevo}»</Text>
+              <View style={estilos.fila}>
+                <Chip borde activo={crearNuevo} texto="Crear su levantamiento" onPress={() => setCrearNuevo(true)} />
+                <Chip borde activo={!crearNuevo} texto="Usar el elegido arriba" onPress={() => setCrearNuevo(false)} />
+              </View>
+              {crearNuevo ? <Text style={estilos.detalle}>Si el cliente no existe se crea; el levantamiento se abre al terminar.</Text> : null}
+            </Tarjeta>
+          ) : null}
           {revision.map((r) => (
             <Tarjeta key={r.clave} style={{ gap: 6 }}>
               {r.item ? (
@@ -344,7 +405,7 @@ export default function Pedido() {
             </Tarjeta>
           ))}
           {sinResolver > 0 ? <Text style={estilos.aviso}>{sinResolver} línea(s) sin artículo no se agregarán.</Text> : null}
-          <Boton texto={`Agregar ${listas.length} línea${listas.length === 1 ? '' : 's'} al levantamiento`} onPress={agregar} />
+          <Boton texto={crearNuevo && clienteNuevo ? `Crear levantamiento con ${listas.length} línea${listas.length === 1 ? '' : 's'}` : `Agregar ${listas.length} línea${listas.length === 1 ? '' : 's'} al levantamiento`} onPress={agregar} />
         </>
       ) : null}
     </ScrollView>

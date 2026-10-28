@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
+import { redactarConClaude } from '@/claude';
+import { empresaActual } from '@/mensajeIA';
 import { listarLineas, obtenerOpciones, type Linea } from '@/db/cotizacion';
 import { listarAreas } from '@/db/levantamiento';
 import {
@@ -43,6 +45,16 @@ export default function Propuesta() {
     obtenerCondiciones(db, proyectoId).then(setCondiciones);
   }, [db, proyectoId]);
 
+  /** Claude escribe el resumen a partir de lo cotizado (sin precios ni marcas); queda editable. */
+  async function redactarResumen() {
+    if (lineas.length === 0) return Alert.alert('Nada que resumir', 'Agrega equipos o servicios a la cotización primero.');
+    const p = await obtenerProyecto(db, proyectoId);
+    const detalle = lineas.map((l) => `${l.cantidad} × ${l.descripcion}${l.trabajo ? ` (${l.trabajo})` : ''}`).join('; ');
+    const texto = await redactarConClaude('alcance', { cliente: p?.cliente, proyecto: p?.nombre, tipo: p?.tipo, instalar: detalle }, await empresaActual(db));
+    setIntro(texto);
+    await guardarPropuestaIntro(db, proyectoId, texto);
+  }
+
   async function pdf() {
     const p = await obtenerProyecto(db, proyectoId);
     if (!p || lineas.length === 0) return Alert.alert('Nada que compartir', 'Agrega equipos o servicios a la cotización primero.');
@@ -72,6 +84,7 @@ export default function Propuesta() {
 
       <Tarjeta>
         <Etiqueta>Resumen del trabajo (opcional)</Etiqueta>
+        <Boton tipo="secundario" icono="sparkles" texto="Redactar con Claude" onPress={redactarResumen} />
         <Campo
           placeholder="Ej. Instalación de sistema de videovigilancia para oficinas y bodega, con visualización remota."
           value={intro}

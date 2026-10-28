@@ -83,7 +83,7 @@ export default function Cotizaciones() {
           <FilaProyecto
             proyecto={proyecto}
             detalle={detalleCotizacion(proyecto, resumen)}
-            accion={resumen.lineas > 0 && proyecto.cot_estado !== 'rechazada' ? { texto: 'Aprobada', onPress: () => aprobar(proyecto.id) } : undefined}
+            accion={resumen.lineas > 0 && proyecto.cot_estado !== 'rechazada' ? { texto: 'Aprobada', icono: 'checkmark', onPress: () => aprobar(proyecto.id) } : undefined}
             href={{ pathname: '/proyecto/[id]', params: { id: proyecto.id } }}
           />
         )}

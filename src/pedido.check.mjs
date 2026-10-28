@@ -49,9 +49,16 @@ assert.equal(body.output_config.format.type, 'json_schema');
 assert.ok(body.system.includes('3 | Gabinete 4U Pared Eaton | gabinete 4u pequeño; rack chico | equipo'));
 assert.ok(body.system.indexOf('1 | Cámara IP Turret') < body.system.indexOf('6 | Switch'), 'inventario ordenado por id');
 assert.ok(!/precio|costo|RD\$/i.test(body.system.split('INVENTARIO:')[1]), 'no se envían precios ni costos');
-assert.ok(body.messages[0].content.includes('Entrada') && body.messages[0].content.includes('3 cámaras turret'));
+assert.ok(body.messages[0].content[0].text.includes('Entrada') && body.messages[0].content[0].text.includes('3 cámaras turret'));
 assert.ok(!('temperature' in body) && !('top_p' in body) && !('top_k' in body), 'la API actual rechaza el muestreo');
-assert.equal(armarPeticion('x', inv, 'm', null).messages[0].content.includes('Área'), false);
+assert.equal(armarPeticion('x', inv, 'm', null).messages[0].content[0].text.includes('Área'), false);
+// con foto del sitio: la imagen va primero y el texto lo avisa
+const conFoto = armarPeticion('', inv, 'm', null, { base64: 'AAA', mime: 'image/jpeg' });
+assert.deepEqual(conFoto.messages[0].content[0], { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAA' } });
+assert.ok(conFoto.messages[0].content[1].text.includes('Foto del sitio') && conFoto.messages[0].content[1].text.includes('solo la foto'));
+assert.equal(leerRespuesta({ lineas: [], notas: null, cliente: '  Juan   Pérez ' }, new Set()).cliente, 'Juan Pérez');
+assert.equal(leerRespuesta({ lineas: [], notas: null, cliente: 'J' }, new Set()).cliente, null);
+assert.equal(entenderLocal('3 cámaras turret', inv).cliente, null);
 
 // --- respuesta de Claude: se valida contra el inventario real
 const ids = new Set(inv.map((a) => a.id));
