@@ -48,7 +48,8 @@ const completo = aDatosProducto(leerArticulo({ ...respuesta, marca: 'Hikvision',
 assert.equal(completo.nombre, 'Cámara IP Bullet 4MPX Hikvision DS-2CD2043G2-I');
 assert.equal(completo.costo_cts, 350050);
 assert.equal(completo.precio_cts, Math.round(350050 * 1.15 * 1.18), 'precio 1 = costo + 15 % + ITBIS, como en el formulario');
-assert.deepEqual([completo.margen1_pct, completo.margen2_pct, completo.margen3_pct, completo.stock], [15, 17.5, 20, 6]);
+assert.deepEqual([completo.margen1_pct, completo.margen2_pct, completo.margen3_pct, completo.stock], [15, 20, 30, 6]);
+assert.deepEqual([aDatosProducto(leerArticulo({ ...respuesta, marca: 'Hikvision', modelo: 'X', costo: 100 }), [10, 12, 14]).margen3_pct], [14], 'usa los márgenes que se le pasan');
 
 // un servicio no lleva stock
 const servicio = aDatosProducto(leerArticulo({ ...respuesta, familia: 'Servicios', tipo: 'Instalación', tecnologia: 'N/A', forma: 'N/A', especificacion: 'N/A', existencia: 4 }));

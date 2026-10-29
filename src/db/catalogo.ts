@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { precioDesdeCosto } from '../dinero';
+import { ITBIS_PCT, precioDesdeCosto } from '../dinero';
 import { prefijoCodigo } from '../nomenclatura';
 
 export const TIPOS_ITEM = ['equipo', 'servicio'] as const;
@@ -29,9 +29,12 @@ export interface Producto {
   descripcion: string | null; // breve; se copia a la cotización y a la factura
   atributos: string | null; // características según el tipo (JSON): {"poe":"Con PoE","discos":"2"}
   apodos: string | null; // nombres cortos separados por coma, para encontrarlo al dictar ("gabinete 4u chico, rack chico")
+  cobro_auto: string | null; // servicio que se cobra solo: 'camara', 'punto' o 'alarma' (ver cobroAuto.ts); null = cobro normal
+  cobro_param: string | null; // 'punto': tipos que cuentan como punto; 'alarma': el porcentaje
 }
 
-export type DatosProducto = Omit<Producto, 'id' | 'codigo'>;
+// cobro_auto / cobro_param sin indicar (undefined) = no se tocan al actualizar
+export type DatosProducto = Omit<Producto, 'id' | 'codigo' | 'cobro_auto' | 'cobro_param'> & { cobro_auto?: string | null; cobro_param?: string | null };
 
 export function listarCatalogo(db: SQLiteDatabase, busqueda = '') {
   return db.getAllAsync<Producto>(
@@ -58,20 +61,22 @@ export async function crearProducto(db: SQLiteDatabase, d: DatosProducto) {
   const codigo = await siguienteCodigo(db, d.categoria);
   return db.runAsync(
     `INSERT INTO catalogo (nombre, precio_cts, tipo, categoria, costo_cts, stock, margen1_pct, margen2_pct, margen3_pct,
-       f_tipo, f_tecnologia, f_forma, f_especificacion, f_marca, f_modelo, descripcion, apodos, atributos, codigo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       f_tipo, f_tecnologia, f_forma, f_especificacion, f_marca, f_modelo, descripcion, apodos, atributos, codigo, cobro_auto, cobro_param)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     d.nombre, d.precio_cts, d.tipo, d.categoria, d.costo_cts, d.stock, d.margen1_pct, d.margen2_pct, d.margen3_pct,
-    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, d.apodos, d.atributos, codigo
+    d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, d.apodos, d.atributos, codigo,
+    d.cobro_auto ?? null, d.cobro_param ?? null
   );
 }
 
-export function actualizarProducto(db: SQLiteDatabase, id: number, d: DatosProducto) {
-  return db.runAsync(
+export async function actualizarProducto(db: SQLiteDatabase, id: number, d: DatosProducto) {
+  await db.runAsync(
     `UPDATE catalogo SET nombre = ?, precio_cts = ?, tipo = ?, categoria = ?, costo_cts = ?, stock = ?, margen1_pct = ?, margen2_pct = ?, margen3_pct = ?,
        f_tipo = ?, f_tecnologia = ?, f_forma = ?, f_especificacion = ?, f_marca = ?, f_modelo = ?, descripcion = ?, apodos = ?, atributos = ? WHERE id = ?`,
     d.nombre, d.precio_cts, d.tipo, d.categoria, d.costo_cts, d.stock, d.margen1_pct, d.margen2_pct, d.margen3_pct,
     d.f_tipo, d.f_tecnologia, d.f_forma, d.f_especificacion, d.f_marca, d.f_modelo, d.descripcion, d.apodos, d.atributos, id
   );
+  if (d.cobro_auto !== undefined) await db.runAsync('UPDATE catalogo SET cobro_auto = ?, cobro_param = ? WHERE id = ?', d.cobro_auto, d.cobro_param ?? null, id);
 }
 
 /** El artículo ya existía: suma la cantidad que entra al stock (si no llevaba conteo, empieza con esa cantidad). */
@@ -92,6 +97,39 @@ export async function registrarCompra(db: SQLiteDatabase, id: number, cantidad: 
        stock = CASE WHEN tipo = 'servicio' THEN stock ELSE COALESCE(stock, 0) + ? END WHERE id = ?`,
     costoCts, costoCts, precio, cantidad, id
   );
+}
+
+/** Regla del costo en los pedidos de proveedor: solo se reemplaza si el nuevo es mayor (o si el artículo aún no tenía costo). */
+export const debeSubirCosto = (actualCts: number, nuevoCts: number) => nuevoCts > 0 && nuevoCts > actualCts;
+
+/**
+ * Pedido de un suplidor para un artículo que ya existe. Si el costo del pedido es mayor, lo actualiza y recalcula el precio 1 con
+ * los márgenes del artículo; si es menor o igual, el costo registrado se queda. Opcionalmente suma lo pedido al stock.
+ */
+export async function aplicarPedidoProveedor(db: SQLiteDatabase, id: number, cantidad: number, costoCts: number, sumarStock: boolean) {
+  const p = await obtenerProducto(db, id);
+  if (!p) return;
+  const sube = debeSubirCosto(p.costo_cts, costoCts);
+  const precio = sube && p.margen1_pct !== null ? precioDesdeCosto(costoCts, p.margen1_pct) : p.precio_cts;
+  await db.runAsync(
+    `UPDATE catalogo SET costo_cts = ?, precio_cts = ?,
+       stock = CASE WHEN tipo = 'servicio' OR ? = 0 THEN stock ELSE COALESCE(stock, 0) + ? END WHERE id = ?`,
+    sube ? costoCts : p.costo_cts, precio, sumarStock ? 1 : 0, cantidad, id
+  );
+}
+
+/**
+ * Pone estos márgenes a todos los artículos con precio calculado (los de precio fijo no se tocan) y recalcula su precio 1.
+ * Las cotizaciones ya hechas conservan los precios con que se cotizaron. Devuelve cuántos artículos cambiaron.
+ */
+export async function aplicarMargenesATodo(db: SQLiteDatabase, m: readonly [number, number, number]) {
+  const r = await db.runAsync(
+    `UPDATE catalogo SET margen1_pct = ?, margen2_pct = ?, margen3_pct = ?,
+       precio_cts = CASE WHEN costo_cts > 0 THEN CAST(ROUND(costo_cts * (1 + ? / 100.0) * (1 + ? / 100.0)) AS INTEGER) ELSE precio_cts END
+     WHERE margen1_pct IS NOT NULL`,
+    m[0], m[1], m[2], m[0], ITBIS_PCT
+  );
+  return r.changes;
 }
 
 export function eliminarProducto(db: SQLiteDatabase, id: number) {

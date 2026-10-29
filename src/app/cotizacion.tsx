@@ -1,3 +1,4 @@
+import { textoCobro } from '@/cobroAuto';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
@@ -334,6 +335,7 @@ export default function Cotizacion() {
                     {l.cantidad} × {formatear(l.precio_cts)}
                     {l.descuento_pct ? ` − ${l.descuento_pct}%` : ''}
                     {l.precio_cts === 0 ? ' · falta el precio' : ''}
+                    {l.cobro_auto ? ` · ${textoCobro(l.cobro_auto, l.cobro_param)}` : ''}
                   </Text>
                   <Campo
                     placeholder="Precio"

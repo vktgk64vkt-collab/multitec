@@ -42,8 +42,14 @@ export function itbisLinea(importeCts: number, impuestoPct: number, incluido: bo
   return incluido ? importeCts - Math.round(importeCts / (1 + impuestoPct / 100)) : Math.round((importeCts * impuestoPct) / 100);
 }
 
+/** "17,5" -> 17.5. null si no es un porcentaje válido (0 a 1000). */
+export function aPorcentaje(t: string): number | null {
+  const n = Number(t.trim().replace(',', '.'));
+  return t.trim() !== '' && Number.isFinite(n) && n >= 0 && n <= 1000 ? n : null;
+}
+
 export const ITBIS_PCT = 18;
-export const MARGENES_BASE = [15, 17.5, 20] as const;
+export const MARGENES_BASE = [15, 20, 30] as const;
 
 interface ConPrecios {
   costo_cts: number;

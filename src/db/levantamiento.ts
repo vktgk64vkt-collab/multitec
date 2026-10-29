@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { Producto } from './catalogo';
 import { detalleArticulo } from '../nomenclatura';
 import { limpiarTrabajo, trabajoAuto } from '../trabajos';
-import { crearLinea } from './cotizacion';
+import { crearLinea, sincronizarCobrosAutomaticos } from './cotizacion';
 
 export interface Partida {
   id: number;
@@ -81,8 +81,16 @@ export function eliminarPartida(db: SQLiteDatabase, id: number) {
       id
     );
     if (!p) return;
+    const auto = p.item_id !== null && !!(await db.getFirstAsync<{ a: string | null }>('SELECT cobro_auto AS a FROM catalogo WHERE id = ?', p.item_id))?.a;
     // datos anteriores a la suma de líneas: una línea por partida, enlazada por partida_id
     const propia = await db.runAsync('DELETE FROM cotizacion_items WHERE partida_id = ?', id);
+    if (auto) {
+      // su cantidad o precio los fija la cotización: la línea se borra entera cuando no queda otra partida del mismo servicio
+      await db.runAsync('DELETE FROM levantamiento WHERE id = ?', id);
+      const otras = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM levantamiento WHERE proyecto_id = ? AND item_id = ?', p.proyecto_id, p.item_id);
+      if (!otras?.n) await db.runAsync('DELETE FROM cotizacion_items WHERE proyecto_id = ? AND item_id = ?', p.proyecto_id, p.item_id);
+      return;
+    }
     if (propia.changes === 0 && p.en_cotizacion === 1) {
       const linea =
         p.item_id !== null
@@ -100,5 +108,6 @@ export function eliminarPartida(db: SQLiteDatabase, id: number) {
       }
     }
     await db.runAsync('DELETE FROM levantamiento WHERE id = ?', id);
+    await sincronizarCobrosAutomaticos(db, p.proyecto_id, true); // si era lo que justificaba un cobro automático, este baja con él
   });
 }

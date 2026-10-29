@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { CODIGOS_SQL } from '../nomenclatura';
 
-export const VERSION_ACTUAL = 25;
+export const VERSION_ACTUAL = 26;
 
 // Marca las partidas que ya tienen su línea en la cotización (datos anteriores a la suma de líneas repetidas).
 export const EN_COTIZACION_SQL = 'UPDATE levantamiento SET en_cotizacion = 1 WHERE id IN (SELECT partida_id FROM cotizacion_items WHERE partida_id IS NOT NULL)';
@@ -338,6 +338,17 @@ async function aplicar(db: SQLiteDatabase, version: number) {
   if (version < 25) {
     // punto exacto del cliente: enlace de Google Maps (pegado, o armado con el GPS)
     await db.execAsync('ALTER TABLE clientes ADD COLUMN ubicacion_url TEXT');
+  }
+
+  if (version < 26) {
+    // cobro automático de un servicio (por cámara, por punto de red o % de los equipos de alarma) y márgenes propios del negocio
+    await db.execAsync(`
+      ALTER TABLE catalogo ADD COLUMN cobro_auto TEXT;
+      ALTER TABLE catalogo ADD COLUMN cobro_param TEXT;
+      ALTER TABLE negocio ADD COLUMN margen1_pct REAL NOT NULL DEFAULT 15;
+      ALTER TABLE negocio ADD COLUMN margen2_pct REAL NOT NULL DEFAULT 20;
+      ALTER TABLE negocio ADD COLUMN margen3_pct REAL NOT NULL DEFAULT 30;
+    `);
   }
 
   await db.execAsync(`PRAGMA user_version = ${VERSION_ACTUAL}`);

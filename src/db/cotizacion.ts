@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { calcularCobro, type LineaBase } from '../cobroAuto';
 import { precioParaProyecto } from '@/dinero';
 import { trabajosDistintos } from '../trabajos';
 import { listarCatalogo, type TipoItem } from './catalogo';
@@ -17,13 +18,19 @@ export interface Linea {
   partida_id: number | null;
   detalle: string | null; // descripción breve copiada del inventario
   trabajo: string | null; // alarma, cámaras, portón...; null = General
+  cobro_auto?: string | null; // servicio que se cobra solo (por cámara, por punto o % de alarma): la cotización fija su cantidad o precio
+  cobro_param?: string | null;
 }
 
 export type DatosLinea = Pick<Linea, 'descripcion' | 'cantidad' | 'precio_cts'> &
   Partial<Pick<Linea, 'tipo' | 'costo_cts' | 'item_id' | 'partida_id' | 'detalle' | 'trabajo'>>;
 
 export function listarLineas(db: SQLiteDatabase, proyectoId: number) {
-  return db.getAllAsync<Linea>('SELECT * FROM cotizacion_items WHERE proyecto_id = ? ORDER BY id', proyectoId);
+  return db.getAllAsync<Linea>(
+    `SELECT ci.*, c.cobro_auto, c.cobro_param FROM cotizacion_items ci LEFT JOIN catalogo c ON c.id = ci.item_id
+     WHERE ci.proyecto_id = ? ORDER BY ci.id`,
+    proyectoId
+  );
 }
 
 /** Partidas del levantamiento que aún no tienen línea en la cotización. */
@@ -71,17 +78,47 @@ export async function crearLinea(db: SQLiteDatabase, proyectoId: number, d: Dato
       'UPDATE cotizacion_items SET cantidad = cantidad + ?, precio_cts = CASE WHEN precio_cts = 0 THEN ? ELSE precio_cts END WHERE id = ?',
       d.cantidad, d.precio_cts, existente.id
     );
-    return;
+  } else {
+    await db.runAsync(
+      `INSERT INTO cotizacion_items (proyecto_id, descripcion, cantidad, precio_cts, tipo, costo_cts, item_id, partida_id, detalle, trabajo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      proyectoId, d.descripcion, d.cantidad, d.precio_cts, d.tipo ?? 'equipo', d.costo_cts ?? 0, d.item_id ?? null, d.partida_id ?? null, d.detalle ?? null, d.trabajo ?? null
+    );
   }
-  await db.runAsync(
-    `INSERT INTO cotizacion_items (proyecto_id, descripcion, cantidad, precio_cts, tipo, costo_cts, item_id, partida_id, detalle, trabajo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    proyectoId, d.descripcion, d.cantidad, d.precio_cts, d.tipo ?? 'equipo', d.costo_cts ?? 0, d.item_id ?? null, d.partida_id ?? null, d.detalle ?? null, d.trabajo ?? null
-  );
+  await sincronizarCobrosAutomaticos(db, proyectoId);
 }
 
-export function actualizarPrecio(db: SQLiteDatabase, id: number, precioCts: number) {
-  return db.runAsync('UPDATE cotizacion_items SET precio_cts = ? WHERE id = ?', precioCts, id);
+/**
+ * Los servicios con cobro automático (por cámara, por punto de red o % de los equipos de alarma, ver cobroAuto.ts) se
+ * recalculan tras cada cambio de líneas. Solo ajustan líneas que ya existen. Sin nada que cobrar no se toca nada, salvo
+ * `quitarSiVacio` (se quitó lo último que los justificaba): entonces la línea sobra y se borra.
+ */
+export async function sincronizarCobrosAutomaticos(db: SQLiteDatabase, proyectoId: number, quitarSiVacio = false) {
+  const filas = await db.getAllAsync<LineaBase & { id: number; item_id: number | null; cobro_param: string | null }>(
+    `SELECT ci.id, ci.item_id, ci.tipo, ci.cantidad, ci.precio_cts, ci.descuento_pct, c.f_tipo, c.categoria, c.cobro_auto, c.cobro_param
+     FROM cotizacion_items ci LEFT JOIN catalogo c ON c.id = ci.item_id WHERE ci.proyecto_id = ? ORDER BY ci.id`,
+    proyectoId
+  );
+  const vistos = new Set<number>();
+  for (const a of filas.filter((f) => f.cobro_auto && f.item_id !== null)) {
+    const r = calcularCobro(a.cobro_auto as string, a.cobro_param, filas);
+    if (!r || (r.vacio && !quitarSiVacio)) continue;
+    if (r.vacio || vistos.has(a.item_id as number)) await db.runAsync('DELETE FROM cotizacion_items WHERE id = ?', a.id); // sobra, o está repetida en otro trabajo
+    else if (a.cantidad !== r.cantidad || (r.precio_cts !== null && a.precio_cts !== r.precio_cts)) {
+      await db.runAsync('UPDATE cotizacion_items SET cantidad = ?, precio_cts = ? WHERE id = ?', r.cantidad, r.precio_cts ?? a.precio_cts, a.id);
+    }
+    vistos.add(a.item_id as number);
+  }
+}
+
+export async function actualizarPrecio(db: SQLiteDatabase, id: number, precioCts: number) {
+  await db.runAsync('UPDATE cotizacion_items SET precio_cts = ? WHERE id = ?', precioCts, id);
+  // el precio de un equipo de alarma cambia lo que se cobra como % de alarma; el de un cobro automático lo fija quien lo edita
+  const l = await db.getFirstAsync<{ proyecto_id: number; auto: string | null }>(
+    'SELECT ci.proyecto_id, c.cobro_auto AS auto FROM cotizacion_items ci LEFT JOIN catalogo c ON c.id = ci.item_id WHERE ci.id = ?',
+    id
+  );
+  if (l && !l.auto) await sincronizarCobrosAutomaticos(db, l.proyecto_id);
 }
 
 /** Descuento global del documento (%), opcional: 0 = sin descuento. */
@@ -106,6 +143,7 @@ export async function moverLinea(db: SQLiteDatabase, id: number, trabajo: string
     } else {
       await db.runAsync('UPDATE cotizacion_items SET trabajo = ? WHERE id = ?', destino, id);
     }
+    await sincronizarCobrosAutomaticos(db, l.proyecto_id);
   });
 }
 
@@ -120,8 +158,10 @@ export async function listarTrabajos(db: SQLiteDatabase, proyectoId: number): Pr
   return trabajosDistintos(filas.map((f) => f.trabajo));
 }
 
-export function eliminarLinea(db: SQLiteDatabase, id: number) {
-  return db.runAsync('DELETE FROM cotizacion_items WHERE id = ?', id);
+export async function eliminarLinea(db: SQLiteDatabase, id: number) {
+  const l = await db.getFirstAsync<{ proyecto_id: number }>('SELECT proyecto_id FROM cotizacion_items WHERE id = ?', id);
+  await db.runAsync('DELETE FROM cotizacion_items WHERE id = ?', id);
+  if (l) await sincronizarCobrosAutomaticos(db, l.proyecto_id, true); // si era lo que justificaba un cobro automático, este baja con él
 }
 
 export async function obtenerImpuesto(db: SQLiteDatabase, proyectoId: number) {
@@ -153,6 +193,7 @@ export async function aplicarPrecios(db: SQLiteDatabase, proyectoId: number, niv
       const p = l.item_id === null ? undefined : inventario.get(l.item_id);
       if (p) await db.runAsync('UPDATE cotizacion_items SET precio_cts = ? WHERE id = ?', precioParaProyecto(p, nivel, conItbis, impuesto_pct), l.id);
     }
+    await sincronizarCobrosAutomaticos(db, proyectoId); // los % de alarma dependen de estos precios
   });
 }
 

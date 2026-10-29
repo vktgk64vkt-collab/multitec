@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 import { armarPeticionArticulo, leerArticulo, type BorradorArticulo } from './articuloVoz';
+import { armarPeticionPedidoPdf, leerPedidoPdf, MAX_BASE64_PDF, type Fuente, type PedidoLeido } from './pedidoPdf';
 import {
   armarPeticionCompra,
   armarPeticionPregunta,
@@ -153,6 +154,15 @@ export async function leerFacturaProveedor(imagen: Imagen, inventario: ArticuloP
   revisarImagen(imagen);
   const datos = await llamar(clave, armarPeticionCompra(imagen, inventario, await leerModelo()));
   return leerCompra(jsonDeRespuesta(datos, 'La factura tiene demasiados artículos para leerla de una vez. Toma la foto por partes.'), new Set(inventario.map((a) => a.id)));
+}
+
+/** Lee el pedido de un suplidor (PDF o foto) y lo convierte en artículos con la nomenclatura estándar. No guarda nada. */
+export async function leerPedidoProveedor(fuente: Fuente): Promise<PedidoLeido> {
+  const clave = await claveObligatoria();
+  if (fuente.tipo === 'imagen') revisarImagen(fuente);
+  else if (fuente.base64.length > MAX_BASE64_PDF) throw new Error('El PDF pesa demasiado (máximo 22 MB). Divídelo en partes.');
+  const datos = await llamar(clave, armarPeticionPedidoPdf(fuente, await leerModelo()));
+  return leerPedidoPdf(jsonDeRespuesta(datos, 'El pedido tiene demasiados artículos para leerlo de una vez. Divide el PDF o toma la foto por partes.'));
 }
 
 /** Contesta una pregunta sobre el negocio con los datos que se le pasan (ya armados en texto). */

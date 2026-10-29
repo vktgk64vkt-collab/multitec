@@ -5,7 +5,9 @@ import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
-import { guardarNegocio, obtenerNegocio, type Negocio } from '@/db/negocio';
+import { aplicarMargenesATodo } from '@/db/catalogo';
+import { guardarMargenes, guardarNegocio, obtenerMargenes, obtenerNegocio, type Margenes, type Negocio } from '@/db/negocio';
+import { aPorcentaje } from '@/dinero';
 import { guardarFoto, uriFoto } from '@/fotos';
 import { COLOR_BASE, COLORES_SUGERIDOS, esColorHex, paleta } from '@/marca';
 import { color } from '@/tema';
@@ -17,9 +19,11 @@ const VACIO: Negocio = { nombre: null, rnc: null, telefono: null, correo: null, 
 export default function MiEmpresa() {
   const db = useSQLiteContext();
   const [n, setN] = useState<Negocio>(VACIO);
+  const [margenes, setMargenes] = useState<string[]>(['15', '20', '30']);
 
   useEffect(() => {
     obtenerNegocio(db).then((r) => r && setN(r));
+    obtenerMargenes(db).then((m) => setMargenes(m.map(String)));
   }, [db]);
 
   const poner = (campo: keyof Negocio) => (t: string) => setN((v) => ({ ...v, [campo]: t }));
@@ -29,6 +33,43 @@ export default function MiEmpresa() {
     // sin recorte: los logos horizontales no deben cortarse en cuadrado
     const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, allowsEditing: false });
     if (!r.canceled) setN((v) => ({ ...v, logo_uri: guardarFoto(r.assets[0].uri) }));
+  }
+
+  /** Los tres márgenes válidos, o null (ya avisó al usuario). */
+  function margenesValidos(): Margenes | null {
+    const m = margenes.map(aPorcentaje);
+    if (m.some((x) => x === null)) {
+      Alert.alert('Margen inválido', 'Escribe los 3 márgenes como porcentaje, por ejemplo 15.');
+      return null;
+    }
+    return m as Margenes;
+  }
+
+  async function guardarLosMargenes() {
+    const m = margenesValidos();
+    if (!m) return;
+    await guardarMargenes(db, m);
+    Alert.alert('Guardado', 'Los artículos nuevos nacerán con estos márgenes. Los que ya tienes no cambian.');
+  }
+
+  function aplicarATodo() {
+    const m = margenesValidos();
+    if (!m) return;
+    Alert.alert(
+      'Aplicar a todo el inventario',
+      `Todos los artículos con precio calculado pasan a ${m.join(', ')} % y su precio se recalcula. Los de precio fijo no cambian ni las cotizaciones ya hechas. ¿Continuar?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Aplicar',
+          onPress: async () => {
+            await guardarMargenes(db, m);
+            const cambiados = await aplicarMargenesATodo(db, m);
+            Alert.alert('Listo', `Se actualizaron ${cambiados} artículo${cambiados === 1 ? '' : 's'}.`);
+          },
+        },
+      ]
+    );
   }
 
   async function guardar() {
@@ -108,6 +149,26 @@ export default function MiEmpresa() {
         <Campo value={n.direccion ?? ''} onChangeText={poner('direccion')} multilinea />
       </Tarjeta>
       <Boton texto="Guardar" onPress={guardar} />
+
+      <Tarjeta>
+        <Etiqueta>Márgenes de ganancia (%)</Etiqueta>
+        <Text style={estilos.pista}>Sobre el costo del artículo, para los precios 1, 2 y 3. Así nacen los artículos nuevos, también los que entran por voz o por el PDF del suplidor.</Text>
+        {margenes.map((m, i) => (
+          <View key={i} style={estilos.margen}>
+            <Text style={estilos.margenEtiqueta}>Precio {i + 1}</Text>
+            <Campo
+              style={estilos.margenCampo}
+              accessibilityLabel={`Margen del precio ${i + 1}`}
+              keyboardType="decimal-pad"
+              value={m}
+              onChangeText={(t) => setMargenes((v) => v.map((x, j) => (j === i ? t : x)))}
+            />
+            <Text style={estilos.pista}>%</Text>
+          </View>
+        ))}
+        <Boton tipo="secundario" texto="Guardar márgenes" onPress={guardarLosMargenes} />
+        <Boton tipo="secundario" texto="Aplicar a todo el inventario" onPress={aplicarATodo} />
+      </Tarjeta>
     </ScrollView>
   );
 }
@@ -126,4 +187,7 @@ const estilos = StyleSheet.create({
   colores: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   muestra: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: 'transparent' },
   muestraActiva: { borderColor: color.texto },
+  margen: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  margenEtiqueta: { width: 80, fontSize: 15, color: color.texto },
+  margenCampo: { width: 90, textAlign: 'right' },
 });

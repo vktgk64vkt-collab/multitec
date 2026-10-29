@@ -10,6 +10,7 @@ import { aDatosProducto, pareceArticuloNuevo, type BorradorArticulo } from '@/ar
 import { entenderArticuloConClaude, entenderConClaude, leerClave, leerModoEntender } from '@/claude';
 import { crearProducto, type DatosProducto, listarCatalogo, type Producto } from '@/db/catalogo';
 import { obtenerOpciones } from '@/db/cotizacion';
+import { obtenerMargenes } from '@/db/negocio';
 import { crearPartida } from '@/db/levantamiento';
 import { buscarOCrearCliente } from '@/db/clientes';
 import { crearProyecto, nombreAutomatico, TIPOS, type Proyecto } from '@/db/proyectos';
@@ -92,8 +93,12 @@ export default function Pedido() {
 
   const porId = new Map((inventario ?? []).map((p) => [p.id, p]));
 
-  function armarRevision(r: ResultadoPedido) {
-    if (r.lineas.length === 0) return Alert.alert('No entendí ningún equipo', 'Prueba dictando de nuevo, por ejemplo: "3 cámaras turret y un gabinete 4u pequeño".');
+  /** false si no se entendió ninguna línea (en ese caso se conserva el texto para corregirlo). */
+  function armarRevision(r: ResultadoPedido): boolean {
+    if (r.lineas.length === 0) {
+      Alert.alert('No entendí ningún equipo', 'Prueba dictando de nuevo, por ejemplo: "3 cámaras turret y un gabinete 4u pequeño".');
+      return false;
+    }
     setNotas(r.notas);
     setClienteNuevo(r.cliente);
     setCrearNuevo(!!r.cliente);
@@ -108,27 +113,36 @@ export default function Pedido() {
         manual: false,
       }))
     );
+    return true;
   }
 
-  /** Entiende lo dictado. Si Claude falla (sin internet, sin saldo...), cae al entendedor local y lo avisa. */
-  async function entender(dictado: string, conClaude = usaClaude) {
+  /**
+   * Entiende lo dictado. Si Claude falla (sin internet, sin saldo...), cae al entendedor local y lo avisa.
+   * Con `borrar` (el pedido llegó por el micrófono) el texto se limpia en cuanto se entendió: lo dictado ya está en la revisión.
+   */
+  async function entender(dictado: string, conClaude = usaClaude, borrar = false) {
     const limpio = numerosEnDigitos(dictado);
     if (!limpio.trim()) return Alert.alert('Falta el pedido', 'Toca el micrófono y habla, o escribe lo que necesitas.');
     setCreado(null);
-    if (pareceArticuloNuevo(limpio)) return proponerArticulo(limpio, conClaude);
+    if (pareceArticuloNuevo(limpio)) return proponerArticulo(limpio, conClaude, borrar);
     if (!inventario || inventario.length === 0) return Alert.alert('El inventario está vacío', 'Primero agrega tus equipos y servicios en el menú, Inventario.');
     const articulos = inventario.map(aArticulo);
     setAviso(null);
     setArticulo(null);
     setTrabajando(true);
     try {
-      if (!conClaude) return armarRevision(entenderLocal(limpio, articulos));
-      try {
-        armarRevision(await entenderConClaude(limpio, articulos, area.trim() || null));
-      } catch (e) {
-        armarRevision(entenderLocal(limpio, articulos));
-        setAviso(`${mensajeError(e)} Entendí el pedido con el iPhone, sin Claude; revísalo con más cuidado.`);
+      let entendido: boolean;
+      if (!conClaude) {
+        entendido = armarRevision(entenderLocal(limpio, articulos));
+      } else {
+        try {
+          entendido = armarRevision(await entenderConClaude(limpio, articulos, area.trim() || null));
+        } catch (e) {
+          entendido = armarRevision(entenderLocal(limpio, articulos));
+          setAviso(`${mensajeError(e)} Entendí el pedido con el iPhone, sin Claude; revísalo con más cuidado.`);
+        }
       }
+      if (entendido && borrar) setTexto('');
     } finally {
       setTrabajando(false);
     }
@@ -154,7 +168,7 @@ export default function Pedido() {
   }
 
   /** "Agrégame una cámara IP de 4mpx bullet al inventario": Claude arma el artículo y tú confirmas antes de guardarlo. */
-  async function proponerArticulo(dictado: string, conClaude: boolean) {
+  async function proponerArticulo(dictado: string, conClaude: boolean, borrar = false) {
     if (!conClaude) return Alert.alert('Hace falta Claude', 'Para crear artículos hablando, agrega tu clave de API en Más, Asistente Claude.');
     setAviso(null);
     setArticulo(null);
@@ -162,9 +176,10 @@ export default function Pedido() {
     setTrabajando(true);
     try {
       const borrador = await entenderArticuloConClaude(dictado);
-      const datos = aDatosProducto(borrador);
+      const datos = aDatosProducto(borrador, await obtenerMargenes(db));
       const existente = (inventario ?? []).find((p) => normalizar(p.nombre) === normalizar(datos.nombre)) ?? null;
       setArticulo({ borrador, datos, existente });
+      if (borrar) setTexto('');
     } catch (e) {
       setAviso(mensajeError(e));
     } finally {
@@ -183,7 +198,7 @@ export default function Pedido() {
 
   // ---------- voz ----------
 
-  const { escuchando, aviso: avisoVoz, iniciar, detener } = useVoz(setTexto, (dictado) => intentar(() => entender(dictado)));
+  const { escuchando, aviso: avisoVoz, iniciar, detener } = useVoz(setTexto, (dictado) => intentar(() => entender(dictado, usaClaude, true)));
 
   // al entrar con el botón redondo, empieza a escuchar cuando la pantalla ya terminó de abrirse y el inventario está listo
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Alert } from '@/alert';
@@ -13,7 +13,9 @@ import {
   type DatosProducto,
   type Producto,
 } from '@/db/catalogo';
-import { aCentavos, formatear, ITBIS_PCT, MARGENES_BASE, precioDesdeCosto } from '@/dinero';
+import { COBROS, esCobro, ETIQUETA_COBRO, porcentajeDe, TIPOS_PUNTO_DEFECTO, type Cobro } from '@/cobroAuto';
+import { obtenerMargenes } from '@/db/negocio';
+import { aCentavos, aPorcentaje, formatear, ITBIS_PCT, MARGENES_BASE, precioDesdeCosto } from '@/dinero';
 import {
   armarNombre,
   atributosDe,
@@ -37,12 +39,6 @@ const esNA = (t: string) => t.trim().toUpperCase() === NA;
 // las casillas que se eligen de una lista, en orden; el modelo se escribe
 const ELEGIBLES = CASILLAS.filter((c) => c !== 'modelo');
 
-/** "17,5" -> 17.5. null si no es un porcentaje válido (0 a 1000). */
-function aPorcentaje(t: string): number | null {
-  const n = Number(t.trim().replace(',', '.'));
-  return t.trim() !== '' && Number.isFinite(n) && n >= 0 && n <= 1000 ? n : null;
-}
-
 /** Crear o editar un artículo del inventario: una sola tarjeta, con cada característica en su barra desplegable. */
 export default function Articulo() {
   const db = useSQLiteContext();
@@ -57,6 +53,9 @@ export default function Articulo() {
   const [stock, setStock] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [apodos, setApodos] = useState('');
+  const [cobro, setCobro] = useState<Cobro | ''>(''); // servicio que se cobra solo en la cotización (por cámara, por punto o % de alarma)
+  const [cobroParam, setCobroParam] = useState('');
+  const baseRef = useRef<string[]>(BASE); // márgenes del negocio (Mi empresa) para artículos que aún no tienen los suyos
   const [extras, setExtras] = useState<Record<string, string>>({}); // características del tipo elegido (PoE, discos...)
 
   const f = FAMILIAS[familia];
@@ -83,12 +82,21 @@ export default function Articulo() {
           }
     );
     setCosto(p.costo_cts ? String(p.costo_cts / 100) : '');
-    setMargenes(p.margen1_pct === null ? BASE : [p.margen1_pct, p.margen2_pct ?? p.margen1_pct, p.margen3_pct ?? p.margen1_pct].map(String));
+    setMargenes(p.margen1_pct === null ? baseRef.current : [p.margen1_pct, p.margen2_pct ?? p.margen1_pct, p.margen3_pct ?? p.margen1_pct].map(String));
     setPrecio(p.precio_cts ? String(p.precio_cts / 100) : '');
     setDescripcion(p.descripcion ?? '');
     setApodos(p.apodos ?? '');
+    setCobro(esCobro(p.cobro_auto) ? p.cobro_auto : '');
+    setCobroParam(p.cobro_param ?? '');
     setExtras(leerAtributos(p.atributos));
   }, []);
+
+  useEffect(() => {
+    obtenerMargenes(db).then((m) => {
+      baseRef.current = m.map(String);
+      if (!id) setMargenes(baseRef.current);
+    });
+  }, [db, id]);
 
   useEffect(() => {
     if (!id) return;
@@ -177,6 +185,14 @@ ${dueno.nombre} (${dueno.codigo})
 Un apodo debe llevar a un solo artículo.`);
       }
     }
+    const auto = f.servicio && cobro ? cobro : null;
+    if (auto === 'alarma' && porcentajeDe(cobroParam) === null) {
+      return Alert.alert('Falta el porcentaje', 'Escribe qué porcentaje cobras sobre los equipos de alarma, por ejemplo 15.');
+    }
+    const cobroDatos = {
+      cobro_auto: auto,
+      cobro_param: auto === 'alarma' ? cobroParam.trim() : auto === 'punto' ? cobroParam.trim() || TIPOS_PUNTO_DEFECTO : null,
+    };
     if (costoCts === null) {
       setAbierto('precios');
       return Alert.alert('Costo inválido', 'Escribe un número, o deja el costo vacío y escribe un precio fijo.');
@@ -196,7 +212,7 @@ Un apodo debe llevar a un solo artículo.`);
       }
       precios = { precio_cts: precioDesdeCosto(costoCts, m[0] as number), costo_cts: costoCts, margen1_pct: m[0], margen2_pct: m[1], margen3_pct: m[2] };
     } else {
-      const cts = aCentavos(precio);
+      const cts = auto === 'alarma' ? 0 : aCentavos(precio); // el % de alarma lo calcula la cotización: no lleva precio
       if (cts === null) {
         setAbierto('precios');
         return Alert.alert('Falta el precio', 'Abre "Precios y stock": escribe el costo, o un precio fijo de venta.');
@@ -205,7 +221,7 @@ Un apodo debe llevar a un solo artículo.`);
     }
 
     const datos: DatosProducto = conservar
-      ? { ...(editando as Producto), ...precios, stock: n, descripcion: descripcion.trim() || null, apodos: misApodos.join(', ') || null }
+      ? { ...(editando as Producto), ...precios, stock: n, descripcion: descripcion.trim() || null, apodos: misApodos.join(', ') || null, ...cobroDatos }
       : {
           nombre: nombre as string,
           tipo: f.servicio ? 'servicio' : 'equipo',
@@ -214,6 +230,7 @@ Un apodo debe llevar a un solo artículo.`);
           descripcion: descripcion.trim() || null,
           apodos: misApodos.join(', ') || null,
           atributos: guardarAtributos(partes.tipo, extras),
+          ...cobroDatos,
           ...precios,
           f_tipo: partes.tipo.trim(),
           f_tecnologia: esNA(partes.tecnologia) ? null : partes.tecnologia.trim(),
@@ -239,7 +256,9 @@ Un apodo debe llevar a un solo artículo.`);
 
   const mostrar = (valor: string) => (valor.trim() === '' ? 'Elegir' : esNA(valor) ? 'No aplica' : valor);
 
-  const resumenPrecios = calculado
+  const resumenPrecios = f.servicio && cobro === 'alarma'
+    ? 'Lo fija el porcentaje'
+    : calculado
     ? `Costo ${formatear(costoCts as number)} · P1 ${margenes[0] && aPorcentaje(margenes[0]) !== null ? formatear(precioDesdeCosto(costoCts as number, aPorcentaje(margenes[0]) as number)) : '—'}`
     : aCentavos(precio) !== null && precio.trim() !== ''
       ? `Precio fijo ${formatear(aCentavos(precio) as number)}`
@@ -362,6 +381,35 @@ Un apodo debe llevar a un solo artículo.`);
         <Campo placeholder="Ej. gabinete 4u pequeño, rack chico" value={apodos} onChangeText={setApodos} autoCorrect={false} />
       </Tarjeta>
 
+      {f.servicio ? (
+        <Tarjeta>
+          <Etiqueta>Cobro automático en la cotización</Etiqueta>
+          <Text style={estilos.aviso2}>
+            Para mano de obra que no se cuenta a mano: la cotización fija sola la cantidad (por cámara o por punto) o el precio (porcentaje de los equipos de alarma),
+            y se ajusta al agregar o quitar equipos.
+          </Text>
+          <View style={estilos.opciones}>
+            <Chip borde activo={cobro === ''} texto="Normal" onPress={() => setCobro('')} />
+            {COBROS.map((c) => (
+              <Chip key={c} borde activo={cobro === c} texto={ETIQUETA_COBRO[c]} onPress={() => setCobro(c)} />
+            ))}
+          </View>
+          {cobro === 'camara' ? <Text style={estilos.aviso2}>Cantidad = todas las cámaras cotizadas, de cualquier tipo o marca. El precio es el que pongas abajo, por cámara.</Text> : null}
+          {cobro === 'punto' ? (
+            <>
+              <Text style={estilos.aviso2}>Cantidad = unidades cotizadas de estos tipos de artículo (sepáralos con coma). El precio es el que pongas abajo, por punto.</Text>
+              <Campo placeholder={TIPOS_PUNTO_DEFECTO} value={cobroParam} onChangeText={setCobroParam} autoCorrect={false} />
+            </>
+          ) : null}
+          {cobro === 'alarma' ? (
+            <>
+              <Text style={estilos.aviso2}>Cantidad 1. Precio = este porcentaje del precio de venta de los equipos de alarma de la cotización.</Text>
+              <Campo placeholder="Porcentaje. Ej. 15" keyboardType="decimal-pad" value={cobroParam} onChangeText={setCobroParam} />
+            </>
+          ) : null}
+        </Tarjeta>
+      ) : null}
+
       <Tarjeta style={{ gap: 0, paddingVertical: 4 }}>
         <Desplegable
           etiqueta="Precios y stock"
@@ -420,6 +468,7 @@ const estilos = StyleSheet.create({
   vistaEtiqueta: { fontSize: 12, color: color.suave },
   vistaNombre: { fontSize: 20, fontWeight: '700', color: color.texto },
   aviso: { fontSize: 13, color: color.alerta },
+  aviso2: { fontSize: 13, color: color.suave },
   subtitulo: { fontSize: 13, fontWeight: '700', color: color.primario, marginTop: 12 },
   opciones: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filaModelo: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10 },

@@ -29,7 +29,7 @@ export function pareceArticuloNuevo(texto: string): boolean {
 
 const lista = (xs: string[]) => (xs.length ? xs.join(', ') : '—');
 
-function descripcionFamilias(): string {
+export function descripcionFamilias(): string {
   return NOMBRES_FAMILIAS.map((n) => {
     const f = FAMILIAS[n];
     const espec = Object.entries(f.especificaciones)
@@ -64,16 +64,20 @@ Familias y sus opciones:
 ${descripcionFamilias()}`;
 
 const texto = { type: 'string' } as const;
+/** Las casillas del nombre estándar tal como se piden a Claude (también las usa la lectura de pedidos en PDF). */
+export const CASILLAS_ESQUEMA = {
+  familia: { type: 'string', enum: NOMBRES_FAMILIAS },
+  tipo: texto,
+  tecnologia: texto,
+  forma: texto,
+  especificacion: texto,
+  marca: texto,
+  modelo: texto,
+} as const;
 const ESQUEMA = {
   type: 'object',
   properties: {
-    familia: { type: 'string', enum: NOMBRES_FAMILIAS },
-    tipo: texto,
-    tecnologia: texto,
-    forma: texto,
-    especificacion: texto,
-    marca: texto,
-    modelo: texto,
+    ...CASILLAS_ESQUEMA,
     costo: { anyOf: [{ type: 'number' }, { type: 'null' }] },
     existencia: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
     apodos: { type: 'array', items: texto },
@@ -122,18 +126,18 @@ export function leerArticulo(datos: unknown): BorradorArticulo {
 }
 
 /** El artículo tal como se guardaría en el inventario: el mismo resultado que llenar el formulario a mano. */
-export function aDatosProducto(b: BorradorArticulo): DatosProducto {
+export function aDatosProducto(b: BorradorArticulo, margenes: readonly [number, number, number] = MARGENES_BASE): DatosProducto {
   const nombre = armarNombre(b.partes);
   if (!nombre) throw new Error('Falta decidir alguna característica del artículo.');
   const servicio = !!FAMILIAS[b.familia].servicio;
   const precios =
     b.costo_cts > 0
       ? {
-          precio_cts: precioDesdeCosto(b.costo_cts, MARGENES_BASE[0]),
+          precio_cts: precioDesdeCosto(b.costo_cts, margenes[0]),
           costo_cts: b.costo_cts,
-          margen1_pct: MARGENES_BASE[0] as number | null,
-          margen2_pct: MARGENES_BASE[1] as number | null,
-          margen3_pct: MARGENES_BASE[2] as number | null,
+          margen1_pct: margenes[0] as number | null,
+          margen2_pct: margenes[1] as number | null,
+          margen3_pct: margenes[2] as number | null,
         }
       : { precio_cts: 0, costo_cts: 0, margen1_pct: null, margen2_pct: null, margen3_pct: null };
   const opcional = (v: string) => (esNA(v) ? null : v.trim());

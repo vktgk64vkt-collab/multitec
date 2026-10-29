@@ -12,6 +12,7 @@ const OPCIONES: { ruta: string; titulo: string; icono: Parameters<typeof Icono>[
   { ruta: '/inventario', titulo: 'Inventario', icono: 'shippingbox' },
   { ruta: '/preguntar', titulo: 'Pregúntale a Claude', icono: 'bubble.left.and.text.bubble.right' },
   { ruta: '/compra', titulo: 'Compra a proveedor', icono: 'doc.text.viewfinder' },
+  { ruta: '/importar-pedido', titulo: 'Pedido del suplidor (PDF o foto)', icono: 'doc.richtext' },
   { ruta: '/reportes', titulo: 'Reportes', icono: 'chart.bar' },
   { ruta: '/negocio', titulo: 'Mi empresa', icono: 'building.2' },
   { ruta: '/asistente', titulo: 'Asistente Claude', icono: 'sparkles' },
