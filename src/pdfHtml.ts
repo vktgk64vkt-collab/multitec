@@ -103,8 +103,8 @@ function filasPorSeccion(lineas: Linea[], sinPrecios: boolean, itbis: Itbis) {
 const estilos = (p: Paleta) => `
   *{box-sizing:border-box}
   body{font-family:-apple-system,'Helvetica Neue',Helvetica,Arial,sans-serif;color:${p.texto};margin:0;font-size:11px;line-height:1.35}
-  @page{margin:0}
-  .pagina{padding:10px 14px 12px}
+  @page{margin:0} /* 18 px = 0,25 in: el mínimo que las impresoras pueden imprimir; menos se recorta */
+  .pagina{padding:18px}
   .cabecera{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
   .logo{height:42px;max-width:220px;object-fit:contain;display:block}
   .nombre-empresa{font-size:20px;font-weight:700;color:${p.principal};letter-spacing:.5px}
