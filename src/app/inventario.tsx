@@ -9,7 +9,7 @@ import { formatear, preciosArticulo } from '@/dinero';
 import { FilaDeslizable } from '@/deslizar';
 import { textoCaracteristicas } from '@/nomenclatura';
 import { color } from '@/tema';
-import { Campo, Tarjeta, PROPS_TECLADO } from '@/ui';
+import { Buscador, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const STOCK_BAJO = 2;
 
@@ -60,7 +60,7 @@ export default function Inventario() {
               ),
             }}
           />
-          <Campo placeholder="Buscar por nombre, código o familia" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" />
+          <Buscador placeholder="Buscar por nombre, código o familia" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" />
           <Text style={estilos.contador}>
             {productos.length} {productos.length === 1 ? 'artículo' : 'artículos'}
           </Text>

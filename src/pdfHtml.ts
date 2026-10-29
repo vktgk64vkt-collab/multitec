@@ -8,6 +8,7 @@ import { agruparPorTrabajo, etiquetaTrabajo } from './trabajos';
 export interface DatosPdf {
   titulo: string;
   ncf?: string;
+  numero?: string; // número interno de la factura (F-000001)
   fecha?: string;
   vence?: string | null;
   negocio?: (Negocio & { logo_base64?: string }) | null;
@@ -102,7 +103,8 @@ function filasPorSeccion(lineas: Linea[], sinPrecios: boolean, itbis: Itbis) {
 const estilos = (p: Paleta) => `
   *{box-sizing:border-box}
   body{font-family:-apple-system,'Helvetica Neue',Helvetica,Arial,sans-serif;color:${p.texto};margin:0;font-size:11px;line-height:1.35}
-  .pagina{padding:20px 28px 22px}
+  @page{margin:0}
+  .pagina{padding:10px 14px 12px}
   .cabecera{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
   .logo{height:42px;max-width:220px;object-fit:contain;display:block}
   .nombre-empresa{font-size:20px;font-weight:700;color:${p.principal};letter-spacing:.5px}
@@ -170,6 +172,7 @@ export function htmlDocumento(d: DatosPdf) {
         <div class="doc">
           <div class="tipo">${esc(tipo)}</div>
           ${numero ? `<div class="numero">${esc(numero)}</div>` : ''}
+          ${d.numero ? `<div class="numero">No. ${esc(d.numero)}</div>` : ''}
           ${d.ncf ? `<div class="numero">NCF ${esc(d.ncf)}</div>` : ''}
           ${d.fecha ? `<div class="meta">Fecha: ${esc(d.fecha)}</div>` : ''}
           ${d.vence ? `<div class="meta">Vence: ${esc(d.vence)}</div>` : ''}
@@ -195,7 +198,7 @@ export function htmlDocumento(d: DatosPdf) {
  */
 export function nombreArchivoPdf(d: DatosPdf): string {
   const { tipo, numero, anulada } = partesTitulo(d.titulo);
-  const identificador = d.ncf ?? numero.replace('#', '');
+  const identificador = d.numero ?? d.ncf ?? numero.replace('#', '');
   const limpio = (t: string) => t.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim();
   const partes = [`${tipo}${identificador ? ` ${identificador}` : ''}${anulada ? ' (ANULADA)' : ''}`, d.cliente, d.proyecto].map(limpio).filter(Boolean);
   return `${partes.join(' - ').slice(0, 120).trim()}.pdf`;

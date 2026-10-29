@@ -7,6 +7,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { intentar, mensajeError } from '@/accion';
 import { Alert } from '@/alert';
 import { aDatosProducto, pareceArticuloNuevo, type BorradorArticulo } from '@/articuloVoz';
+import { cuadroDictadoOculto } from '@/ajustes';
 import { entenderArticuloConClaude, entenderConClaude, leerClave, leerModoEntender } from '@/claude';
 import { crearProducto, type DatosProducto, listarCatalogo, type Producto } from '@/db/catalogo';
 import { obtenerOpciones } from '@/db/cotizacion';
@@ -64,6 +65,7 @@ export default function Pedido() {
   const [soloLocal, setSoloLocal] = useState(false); // ajuste: entender sin Claude aunque haya clave
   const usaClaude = conClave && !soloLocal;
   const [texto, setTexto] = useState('');
+  const [sinCuadro, setSinCuadro] = useState(false); // ajuste: solo el micrófono, sin cuadro de texto
   const [area, setArea] = useState(areaInicial ?? '');
   const [revision, setRevision] = useState<Revision[] | null>(null);
   const [notas, setNotas] = useState<string | null>(null);
@@ -82,6 +84,7 @@ export default function Pedido() {
       listarCatalogo(db).then(setInventario);
       leerClave().then((c) => setConClave(!!c));
       leerModoEntender().then((m) => setSoloLocal(m === 'local'));
+      cuadroDictadoOculto().then(setSinCuadro);
       // levantamientos donde todavía se puede agregar (cotizaciones sin aprobar), el más urgente primero
       proyectosConResumen(db, 'activos', 'cotizacion').then((r) => {
         const libres = r.map((x) => x.proyecto);
@@ -289,22 +292,26 @@ export default function Pedido() {
       </Tarjeta>
 
       <Tarjeta>
-        <Etiqueta>Lo que dictaste (puedes corregirlo)</Etiqueta>
-        <Campo
-          placeholder='Ej: "en la entrada 3 cámaras turret, un gabinete 4u pequeño y 3 puntos de instalación"'
-          value={texto}
-          onChangeText={setTexto}
-          onEndEditing={() => setTexto((t) => numerosEnDigitos(t))}
-          multilinea
-          style={{ minHeight: 90 }}
-        />
+        {sinCuadro ? null : (
+          <>
+            <Etiqueta>Lo que dictaste (puedes corregirlo)</Etiqueta>
+            <Campo
+              placeholder='Ej: "en la entrada 3 cámaras turret, un gabinete 4u pequeño y 3 puntos de instalación"'
+              value={texto}
+              onChangeText={setTexto}
+              onEndEditing={() => setTexto((t) => numerosEnDigitos(t))}
+              multilinea
+              style={{ minHeight: 90 }}
+            />
+          </>
+        )}
         <Etiqueta>Área (si no la mencionas al dictar)</Etiqueta>
         <Campo placeholder="Ej. Entrada, Bodega" value={area} onChangeText={setArea} />
         {conClave ? (
           <>
             <Text style={estilos.detalle}>También puedes decir: «agrégame una cámara IP de 4 megapíxeles bullet al inventario».</Text>
-            <Boton texto="Entender con Claude" onPress={() => entender(texto, true)} />
-            <Boton tipo="secundario" texto="Entender sin Claude (gratis, sin internet)" onPress={() => entender(texto, false)} />
+            {sinCuadro ? null : <Boton texto="Entender con Claude" onPress={() => entender(texto, true)} />}
+            {sinCuadro ? null : <Boton tipo="secundario" texto="Entender sin Claude (gratis, sin internet)" onPress={() => entender(texto, false)} />}
             <View style={estilos.fila}>
               <View style={{ flex: 1 }}>
                 <Boton tipo="secundario" icono="camera" texto="Foto del sitio" onPress={() => entenderFoto('camara')} />
@@ -316,7 +323,7 @@ export default function Pedido() {
           </>
         ) : (
           <>
-            <Boton texto="Entender pedido" onPress={() => entender(texto, false)} />
+            {sinCuadro ? null : <Boton texto="Entender pedido" onPress={() => entender(texto, false)} />}
             <Link href="/asistente" style={estilos.enlace}>
               Con Claude se entienden frases más complejas. Agrega tu clave de API.
             </Link>

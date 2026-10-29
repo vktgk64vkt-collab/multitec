@@ -17,6 +17,7 @@ const OPCIONES: { ruta: string; titulo: string; icono: Parameters<typeof Icono>[
   { ruta: '/negocio', titulo: 'Mi empresa', icono: 'building.2' },
   { ruta: '/asistente', titulo: 'Asistente Claude', icono: 'sparkles' },
   { ruta: '/respaldo', titulo: 'Respaldo de datos', icono: 'externaldrive' },
+  { ruta: '/avisos', titulo: 'Avisos y errores', icono: 'exclamationmark.triangle' },
 ];
 
 /**

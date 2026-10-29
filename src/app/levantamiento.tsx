@@ -16,7 +16,7 @@ import { FilaDeslizable } from '@/deslizar';
 import { SelectorTrabajo } from '@/trabajosUi';
 import { BotonDictado } from '@/dictado';
 import { color } from '@/tema';
-import { Boton, Campo, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
+import { Buscador, Boton, Campo, Etiqueta, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const MAX_SUGERENCIAS = 12;
 
@@ -171,7 +171,7 @@ export default function Levantamiento() {
 
       <Tarjeta>
         <Etiqueta>Elegir del inventario (usa el Precio {opciones.nivel})</Etiqueta>
-        <Campo placeholder="Buscar equipo o servicio" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" />
+        <Buscador placeholder="Buscar equipo o servicio" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" />
         {inventario.length === 0 ? (
           <Link href="/inventario" style={estilos.enlace}>
             El inventario está vacío. Agrega equipos y servicios aquí.

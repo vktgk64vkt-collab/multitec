@@ -9,6 +9,7 @@ export interface Factura {
   id: number;
   proyecto_id: number;
   ncf: string;
+  numero: string;
   subtotal_cts: number;
   impuesto_cts: number;
   descuento_cts: number;
@@ -27,6 +28,9 @@ export interface Factura {
 // NCF tradicional (B01 + 8 dígitos) o e-NCF (E31 + 10 dígitos)
 /** Factura sin comprobante fiscal: el NCF queda en ceros y puede repetirse. */
 export const SIN_NCF = '00000000';
+
+/** F-000001: el número interno de la factura (distinto del NCF). */
+export const numeroFactura = (n: number) => `F-${String(n).padStart(6, '0')}`;
 
 export const NCF_VALIDO = /^(B\d{2}\d{8}|E\d{2}\d{10})$/;
 
@@ -66,9 +70,13 @@ export async function crearFactura(db: SQLiteDatabase, proyectoId: number, ncf: 
   const usado = ncf !== SIN_NCF && (await db.getFirstAsync('SELECT 1 FROM facturas WHERE ncf = ?', ncf));
   if (usado) return 'ncf_repetido';
   await db.withTransactionAsync(async () => {
+    // número propio, consecutivo e irrepetible: el contador solo sube
+    await db.runAsync('UPDATE negocio SET sec_factura = sec_factura + 1 WHERE id = 1');
+    const sec = await db.getFirstAsync<{ n: number }>('SELECT sec_factura AS n FROM negocio WHERE id = 1');
+    if (!sec) throw new Error('Falta el registro de Mi empresa para numerar la factura.');
     const f = await db.runAsync(
-      "INSERT INTO facturas (proyecto_id, ncf, subtotal_cts, descuento_cts, descuento_pct, impuesto_cts, total_cts, vence) VALUES (?, ?, ?, ?, ?, ?, ?, date('now', 'localtime', '+30 days'))",
-      proyectoId, ncf, t.subtotal, t.descuento, op.descuento_pct, t.impuesto, t.total
+      "INSERT INTO facturas (proyecto_id, ncf, numero, subtotal_cts, descuento_cts, descuento_pct, impuesto_cts, total_cts, vence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, date('now', 'localtime', '+30 days'))",
+      proyectoId, ncf, numeroFactura(sec.n), t.subtotal, t.descuento, op.descuento_pct, t.impuesto, t.total
     );
     for (const l of lineas) {
       await db.runAsync(
@@ -180,6 +188,7 @@ export interface FilaFactura {
   id: number;
   proyecto_id: number;
   ncf: string;
+  numero: string;
   total_cts: number;
   pagado_cts: number;
   pagada: number;
@@ -193,7 +202,7 @@ export interface FilaFactura {
 /** Todas las facturas, la más reciente primero. Solo las que se pueden abrir (con su proyecto y cliente). */
 export function listarFacturas(db: SQLiteDatabase) {
   return db.getAllAsync<FilaFactura>(
-    `SELECT f.id, f.proyecto_id, f.ncf, f.total_cts, f.pagada, f.anulada, f.vence, f.creado_en,
+    `SELECT f.id, f.proyecto_id, f.ncf, f.numero, f.total_cts, f.pagada, f.anulada, f.vence, f.creado_en,
             c.nombre AS cliente, p.nombre AS proyecto,
             COALESCE((SELECT SUM(monto_cts) FROM pagos WHERE factura_id = f.id), 0) AS pagado_cts
      FROM facturas f JOIN proyectos p ON p.id = f.proyecto_id JOIN clientes c ON c.id = p.cliente_id

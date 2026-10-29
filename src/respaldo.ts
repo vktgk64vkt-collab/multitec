@@ -4,7 +4,7 @@ import * as Sharing from 'expo-sharing';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-import { APROBADOS_SQL, EN_COTIZACION_SQL, VERSION_ACTUAL } from '@/db/migraciones';
+import { APROBADOS_SQL, EN_COTIZACION_SQL, NUMEROS_FACTURA_SQL, VERSION_ACTUAL } from '@/db/migraciones';
 import { CODIGOS_SQL } from '@/nomenclatura';
 
 // Hijas primero al borrar, padres primero al insertar.
@@ -88,7 +88,7 @@ export async function restaurarRespaldo(db: SQLite.SQLiteDatabase,uriArchivo: st
   const copia = await SQLite.deserializeDatabaseAsync(await new File(uriArchivo).bytes());
   try {
     const v = await copia.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-    if (!v || v.user_version < 7 || v.user_version > VERSION_ACTUAL) throw new Error('El respaldo es de otra versión de la app.');
+    if (!v || v.user_version < 7 || v.user_version > VERSION_ACTUAL) throw new Error(`El respaldo es de otra versión de la app (versión ${v?.user_version ?? '?'}, esta app usa ${VERSION_ACTUAL}).`);
     const filas = new Map<string, Record<string, unknown>[]>();
     // un respaldo viejo no trae las tablas nuevas
     const existentes = new Set(
@@ -111,10 +111,14 @@ export async function restaurarRespaldo(db: SQLite.SQLiteDatabase,uriArchivo: st
       for (const t of TABLAS) {
         for (const f of filas.get(t) ?? []) {
           const cols = Object.keys(f).filter((c) => validas.get(t)?.has(c)); // nombres del archivo no confiables
-          await db.runAsync(
-            `INSERT INTO ${t} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`,
-            cols.map((c) => f[c] as SQLite.SQLiteBindValue)
-          );
+          try {
+            await db.runAsync(
+              `INSERT INTO ${t} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`,
+              cols.map((c) => f[c] as SQLite.SQLiteBindValue)
+            );
+          } catch (e) {
+            throw new Error(`Falló al restaurar «${t}» (fila ${String(f.id ?? '?')}): ${e instanceof Error ? e.message : String(e)}`);
+          }
         }
       }
       // respaldo anterior a los códigos: se les asigna uno a cada artículo
@@ -123,6 +127,8 @@ export async function restaurarRespaldo(db: SQLite.SQLiteDatabase,uriArchivo: st
       if (v.user_version < 16) await db.execAsync(EN_COTIZACION_SQL);
       // respaldo anterior a cotización/proyecto: sin esto todos los proyectos figurarían como cotizaciones pendientes
       if (v.user_version < 22) await db.execAsync(APROBADOS_SQL);
+      // respaldo anterior al número de factura
+      if (v.user_version < 27) await db.execAsync(NUMEROS_FACTURA_SQL);
     });
   } finally {
     await db.execAsync('PRAGMA foreign_keys = ON');

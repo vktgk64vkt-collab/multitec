@@ -1,8 +1,36 @@
 import { Stack } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
+import type { ErrorBoundaryProps } from 'expo-router';
+import { Pressable, Text, View } from 'react-native';
+
+import { registrarAviso } from '@/avisos';
 
 import { migrarBaseDeDatos } from '@/db/migraciones';
 import { color } from '@/tema';
+
+// fallos que nadie atrapó: quedan en Avisos con su código
+const globalErrors = (globalThis as { ErrorUtils?: { getGlobalHandler(): (e: unknown, fatal?: boolean) => void; setGlobalHandler(f: (e: unknown, fatal?: boolean) => void): void } }).ErrorUtils;
+if (globalErrors) {
+  const previo = globalErrors.getGlobalHandler();
+  globalErrors.setGlobalHandler((e, fatal) => {
+    registrarAviso(e, fatal ? 'fallo.fatal' : 'fallo.global');
+    previo(e, fatal);
+  });
+}
+
+/** Pantalla de rescate cuando una pantalla se rompe: muestra el código en vez de cerrar la app. */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const codigo = registrarAviso(error, 'pantalla');
+  return (
+    <View style={{ flex: 1, padding: 24, justifyContent: 'center', gap: 12, backgroundColor: color.fondo }}>
+      <Text style={{ fontSize: 22, fontWeight: '700', color: color.texto }}>Algo falló en esta pantalla</Text>
+      <Text style={{ fontSize: 16, color: color.suave }}>Código {codigo}. Queda guardado en Más, Avisos para corregirlo.</Text>
+      <Pressable accessibilityRole="button" onPress={retry} style={{ padding: 14, borderRadius: 14, backgroundColor: color.primario, alignItems: 'center' }}>
+        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Reintentar</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export default function RootLayout() {
   return (
@@ -27,6 +55,7 @@ export default function RootLayout() {
         <Stack.Screen name="clientes/[id]" options={{ title: 'Cliente' }} />
         <Stack.Screen name="clientes/formulario" />
         <Stack.Screen name="respaldo" />
+        <Stack.Screen name="avisos" options={{ title: 'Avisos' }} />
         <Stack.Screen name="negocio" />
         <Stack.Screen name="inventario" />
         <Stack.Screen name="inventario/articulo" />

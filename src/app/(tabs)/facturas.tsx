@@ -12,7 +12,7 @@ import { normalizar } from '@/pedido';
 import { FilaProyecto } from '@/proyectoUi';
 import { PantallaTab } from '@/pestanas';
 import { color, tarjeta } from '@/tema';
-import { Campo, PROPS_TECLADO } from '@/ui';
+import { Buscador, PROPS_TECLADO } from '@/ui';
 
 const SIN_RESUMEN = { por_cobrar: 0, cobrado: 0, cobrado_mes: 0, vencido: 0 };
 
@@ -39,7 +39,7 @@ export default function Facturas() {
   function confirmarAnular(f: FilaFactura) {
     Alert.alert(
       'Anular factura',
-      `¿Anular ${f.ncf}? El NCF queda consumido, el stock vuelve al inventario y la factura sale de tus totales. Para volver a facturar, duplica el proyecto.`,
+      `¿Anular la factura ${f.numero}? El NCF queda consumido, el stock vuelve al inventario y la factura sale de tus totales. Para volver a facturar, duplica el proyecto.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -56,12 +56,12 @@ export default function Facturas() {
 
   const hoy = fechaEn(0);
   const q = normalizar(busqueda);
-  const facturasVisibles = q ? facturas.filter((f) => normalizar(`${f.ncf} ${f.cliente} ${f.proyecto}`).includes(q)) : facturas;
+  const facturasVisibles = q ? facturas.filter((f) => normalizar(`${f.numero} ${f.ncf} ${f.cliente} ${f.proyecto}`).includes(q)) : facturas;
   const porFacturarVisibles = q ? porFacturar.filter((x) => normalizar(`${x.proyecto.nombre} ${x.proyecto.cliente}`).includes(q)) : porFacturar;
 
   const encabezado = (
     <View style={{ gap: 10 }}>
-      <Campo placeholder="Buscar por NCF, cliente o proyecto" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
+      <Buscador placeholder="Buscar por NCF, cliente o proyecto" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
       <View style={estilos.fila}>
         <View style={[tarjeta, estilos.cifra]}>
           <Text style={estilos.etiqueta}>Por cobrar</Text>
@@ -110,9 +110,10 @@ export default function Facturas() {
           return (
             <FilaDeslizable etiqueta="Anular" deshabilitada={!!f.anulada} onAccion={() => confirmarAnular(f)}>
               <Link href={{ pathname: '/factura', params: { proyecto: f.proyecto_id } }} asChild>
-                <Pressable accessibilityRole="button" accessibilityLabel={`Factura ${f.ncf}, ${f.cliente}, ${estado}`} style={[tarjeta, estilos.factura, f.anulada ? { opacity: 0.6 } : null]}>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Factura ${f.numero}, ${f.cliente}, ${estado}`} style={[tarjeta, estilos.factura, f.anulada ? { opacity: 0.6 } : null]}>
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={estilos.ncf}>{f.ncf}</Text>
+                    <Text style={estilos.ncf}>{f.numero}</Text>
+                    <Text style={estilos.detalle}>NCF {f.ncf}</Text>
                     <Text style={estilos.detalle}>
                       {f.cliente} · {f.proyecto}
                     </Text>

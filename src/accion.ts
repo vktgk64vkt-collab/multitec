@@ -1,6 +1,7 @@
 import * as Haptics from 'expo-haptics';
 
 import { Alert } from '@/alert';
+import { registrarAviso } from '@/avisos';
 
 /** Toque de vibración suave al pulsar. En web o sin motor háptico no hace nada. */
 export function haptico() {
@@ -18,6 +19,9 @@ export async function intentar(accion: () => unknown) {
   try {
     await accion();
   } catch (e) {
-    Alert.alert('No se pudo completar', mensajeError(e));
+    const codigo = registrarAviso(e, accion.name || 'acción');
+    Alert.alert('No se pudo completar', `${mensajeError(e)}
+
+Código: ${codigo} (queda en Más, Avisos)`);
   }
 }

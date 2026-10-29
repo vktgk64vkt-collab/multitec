@@ -39,6 +39,25 @@ export function Campo(props: TextInputProps & { multilinea?: boolean }) {
   );
 }
 
+/** Barra de búsqueda resaltada: lupa, borde marcado y fondo blanco para distinguirla de los demás campos. */
+export function Buscador(props: TextInputProps) {
+  const { style, ...resto } = props;
+  return (
+    <View style={estilos.buscador}>
+      <Icono nombre="magnifyingglass" tam={18} tinte={color.primario} />
+      <TextInput
+        placeholderTextColor={color.suave}
+        accessibilityLabel={props.placeholder}
+        clearButtonMode="while-editing"
+        autoCorrect={false}
+        returnKeyType="search"
+        {...resto}
+        style={[estilos.buscadorTexto, style]}
+      />
+    </View>
+  );
+}
+
 /** Icono de SF Symbols (el set nativo de iOS): nítido y combina con el sistema. */
 export function Icono({ nombre, tam = 18, tinte = color.texto }: { nombre: SFSymbol; tam?: number; tinte?: string }) {
   return <SymbolView name={nombre} size={tam} tintColor={tinte} weight="medium" style={{ width: tam, height: tam }} />;
@@ -278,6 +297,8 @@ const estilos = StyleSheet.create({
   desplegableCuerpo: { paddingBottom: 12, gap: 10 },
   etiqueta: { fontSize: 13, fontWeight: '600', color: color.suave, marginTop: 4 },
   campo: { padding: 12, minHeight: TOQUE_MIN, borderRadius: 12, backgroundColor: color.fondo, fontSize: 16, color: color.texto },
+  buscador: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, minHeight: 48, borderRadius: 14, backgroundColor: '#fff', borderWidth: 2, borderColor: color.primario },
+  buscadorTexto: { flex: 1, minHeight: 44, fontSize: 16, color: color.texto },
   multilinea: { minHeight: 90, textAlignVertical: 'top' },
   boton: { paddingHorizontal: 16, paddingVertical: 10, minHeight: TOQUE_MIN, borderRadius: 12, backgroundColor: color.primario, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
   acciones: { flexDirection: 'row', gap: 8 },

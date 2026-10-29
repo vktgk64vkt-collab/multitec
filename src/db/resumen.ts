@@ -57,7 +57,7 @@ async function resumenes(db: SQLiteDatabase, proyectos: Proyecto[]): Promise<Map
     filasDe<{ proyecto_id: number; ncf: string; total_cts: number; anulada: number; pagado: number }>(
       db,
       (m) =>
-        `SELECT f.proyecto_id, f.ncf, f.total_cts, f.anulada, COALESCE((SELECT SUM(monto_cts) FROM pagos WHERE factura_id = f.id), 0) AS pagado
+        `SELECT f.proyecto_id, f.numero AS ncf, f.total_cts, f.anulada, COALESCE((SELECT SUM(monto_cts) FROM pagos WHERE factura_id = f.id), 0) AS pagado
          FROM facturas f WHERE f.proyecto_id IN (${m})`,
       ids
     ),

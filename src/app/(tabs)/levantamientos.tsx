@@ -8,7 +8,7 @@ import { FilaProyecto } from '@/proyectoUi';
 import { normalizar } from '@/pedido';
 import { PantallaTab } from '@/pestanas';
 import { color } from '@/tema';
-import { Campo, Icono, PROPS_TECLADO } from '@/ui';
+import { Buscador, Icono, PROPS_TECLADO } from '@/ui';
 
 /** Levantamiento: elige el proyecto donde estás para agregar equipos o dictar un pedido. */
 export default function Levantamientos() {
@@ -45,7 +45,7 @@ export default function Levantamientos() {
                 <Text style={estilos.textoNuevo}>Nuevo levantamiento</Text>
               </Pressable>
             </Link>
-            <Campo placeholder="Buscar por proyecto, cliente o tipo" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
+            <Buscador placeholder="Buscar por proyecto, cliente o tipo" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
           </>
         }
         ListEmptyComponent={

@@ -32,7 +32,7 @@ import { detalleArticulo } from '@/nomenclatura';
 import { agruparPorTrabajo, etiquetaTrabajo, hayVariosTrabajos, limpiarTrabajo, trabajoAuto } from '@/trabajos';
 import { SelectorTrabajo } from '@/trabajosUi';
 import { color } from '@/tema';
-import { Boton, Campo, Chip, Etiqueta, PROPS_TECLADO, Tarjeta } from '@/ui';
+import { Buscador, Boton, Campo, Chip, Etiqueta, PROPS_TECLADO, Tarjeta } from '@/ui';
 
 const MAX_SUGERENCIAS = 6;
 
@@ -292,7 +292,7 @@ export default function Ejecucion() {
           <Tarjeta>
             <Etiqueta>Agregar algo que se usó</Etiqueta>
             <SelectorTrabajo trabajos={trabajos} valor={trabajo} onElegir={setTrabajo} />
-            <Campo placeholder="Buscar en el inventario (nombre o código)" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
+            <Buscador placeholder="Buscar en el inventario (nombre o código)" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
             {sugerencias.map((p) => (
               <Pressable key={p.id} accessibilityRole="button" accessibilityLabel={`Agregar ${p.nombre}`} style={estilos.sugerencia} onPress={() => agregarDelInventario(p)}>
                 <View style={{ flex: 1 }}>

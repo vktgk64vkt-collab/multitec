@@ -4,7 +4,7 @@ import { fechaEn, formatearFecha } from '../dinero';
 import { listarLineas } from './cotizacion';
 import { copiarCotizacion } from './ejecucion';
 
-export const TIPOS = ['CCTV', 'Alarma', 'Control de acceso', 'Cableado', 'Otro'] as const;
+export const TIPOS = ['CCTV', 'Alarma', 'Control de acceso', 'Cerco eléctrico', 'Cableado', 'Otro'] as const;
 export const ESTADOS = ['levantamiento', 'cotizado', 'en ejecución', 'facturado', 'cerrado'] as const;
 
 // El valor guardado es la posición: 0 baja, 1 media, 2 alta.

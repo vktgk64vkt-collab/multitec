@@ -4,6 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
+import { registrarAviso } from '@/avisos';
 import { exportarRespaldo, guardarRespaldoEn, restaurarFotos, restaurarRespaldo } from '@/respaldo';
 import { color } from '@/tema';
 
@@ -14,7 +15,9 @@ export default function Respaldo() {
     try {
       if (await guardarRespaldoEn(db)) Alert.alert('Listo', 'El respaldo se guardó en la carpeta que elegiste.');
     } catch (e) {
-      Alert.alert('No se pudo guardar', String(e));
+      Alert.alert('No se pudo guardar', `${String(e)}
+
+Código: ${registrarAviso(e, 'respaldo.guardar')}`);
     }
   }
 
@@ -22,7 +25,9 @@ export default function Respaldo() {
     try {
       if (!(await exportarRespaldo(db))) Alert.alert('No disponible', 'El respaldo solo funciona en el iPhone.');
     } catch (e) {
-      Alert.alert('No se pudo compartir', String(e));
+      Alert.alert('No se pudo compartir', `${String(e)}
+
+Código: ${registrarAviso(e, 'respaldo.compartir')}`);
     }
   }
 
@@ -31,7 +36,9 @@ export default function Respaldo() {
       const n = await restaurarFotos();
       if (n !== null) Alert.alert('Listo', n === 0 ? 'La carpeta no tenía fotos.' : `Se devolvieron ${n} fotos.`);
     } catch (e) {
-      Alert.alert('No se pudieron restaurar las fotos', String(e));
+      Alert.alert('No se pudieron restaurar las fotos', `${String(e)}
+
+Código: ${registrarAviso(e, 'respaldo.fotos')}`);
     }
   }
 
@@ -48,7 +55,9 @@ export default function Respaldo() {
             await restaurarRespaldo(db, r.assets[0].uri);
             Alert.alert('Listo', 'Datos restaurados.');
           } catch (e) {
-            Alert.alert('No se pudo restaurar', String(e));
+            Alert.alert('No se pudo restaurar', `${String(e)}
+
+Código: ${registrarAviso(e, 'respaldo.restaurar')}`);
           }
         },
       },

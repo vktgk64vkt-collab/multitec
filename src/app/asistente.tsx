@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
+import { cuadroDictadoOculto, guardarCuadroDictadoOculto, guardarPosicionMic } from '@/ajustes';
 import { useEffect, useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Alert } from '@/alert';
 import { borrarClave, clavePartida, guardarClave, guardarModelo, guardarModoEntender, leerClave, leerModelo, leerModoEntender, probarConexion, type ModoEntender } from '@/claude';
@@ -14,11 +15,13 @@ export default function Asistente() {
   const [nueva, setNueva] = useState('');
   const [modelo, setModelo] = useState<string>(MODELO_BASE);
   const [modo, setModo] = useState<ModoEntender>('claude');
+  const [sinCuadro, setSinCuadro] = useState(false);
 
   useEffect(() => {
     leerClave().then(setGuardada);
     leerModelo().then(setModelo);
     leerModoEntender().then(setModo);
+    cuadroDictadoOculto().then(setSinCuadro);
   }, []);
 
   async function guardar() {
@@ -109,6 +112,24 @@ export default function Asistente() {
             ? 'Tu voz siempre la transcribe el iPhone. Después Claude entiende el pedido; si no hay internet o falla, lo entiende el iPhone solo (más básico, pero gratis y sin conexión).'
             : 'No se usa Claude para dictar: el iPhone entiende el pedido solo. Gratis y sin internet, pero entiende frases más simples.'}
         </Text>
+      </Tarjeta>
+
+      <Tarjeta>
+        <Etiqueta>Pantalla de dictado</Etiqueta>
+        <View style={estilos.modelos}>
+          <Text style={[estilos.texto, { flex: 1 }]}>Ocultar el cuadro de texto y dejar solo el micrófono</Text>
+          <Switch
+            accessibilityLabel="Ocultar el cuadro de texto al dictar"
+            value={sinCuadro}
+            onValueChange={async (v) => {
+              setSinCuadro(v);
+              await guardarCuadroDictadoOculto(v);
+            }}
+            trackColor={{ true: color.primario }}
+          />
+        </View>
+        <Text style={estilos.texto}>El botón del micrófono flotante se puede arrastrar: mantenlo y muévelo donde no tape nada.</Text>
+        <Boton tipo="secundario" texto="Devolver el botón a su lugar" onPress={() => guardarPosicionMic(null)} />
       </Tarjeta>
 
       <Tarjeta>

@@ -7,7 +7,7 @@ import { Alert } from '@/alert';
 import { FilaDeslizable } from '@/deslizar';
 import { eliminarCliente, listarClientes, type Cliente } from '@/db/clientes';
 import { color, tarjeta } from '@/tema';
-import { Campo, PROPS_TECLADO } from '@/ui';
+import { Buscador, PROPS_TECLADO } from '@/ui';
 
 /** Lista de clientes (se abre desde el menú de arriba a la derecha). */
 export default function ListaClientes() {
@@ -56,7 +56,7 @@ export default function ListaClientes() {
               ),
             }}
           />
-          <Campo placeholder="Buscar por nombre, empresa o teléfono" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
+          <Buscador placeholder="Buscar por nombre, empresa o teléfono" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
         </>
       }
       ListEmptyComponent={<Text style={estilos.vacio}>{busqueda ? 'Sin resultados.' : 'Aún no hay clientes. Toca "+ Nuevo" para agregar el primero.'}</Text>}

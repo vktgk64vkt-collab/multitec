@@ -107,6 +107,7 @@ export default function Factura() {
     const opciones = await obtenerOpciones(db, proyectoId);
     previsualizar({
       titulo: f.anulada ? 'Factura (ANULADA)' : 'Factura',
+      numero: f.numero,
       ncf: f.ncf,
       fecha: formatearFecha(f.creado_en),
       vence: f.vence ? formatearFecha(f.vence) : null,
@@ -133,14 +134,14 @@ export default function Factura() {
     const firma = empresa ? `\n— ${empresa}` : '';
     const mensaje =
       saldo > 0
-        ? `Hola ${f.cliente}, le recordamos la factura ${f.ncf} por ${moneda(f.total_cts)}. Saldo pendiente: ${moneda(saldo)}${f.vence ? `, vence el ${formatearFecha(f.vence)}` : ''}. Gracias.${firma}`
-        : `Hola ${f.cliente}, confirmamos el pago completo de la factura ${f.ncf}. Gracias por su confianza.${firma}`;
+        ? `Hola ${f.cliente}, le recordamos la factura ${f.numero} por ${moneda(f.total_cts)}. Saldo pendiente: ${moneda(saldo)}${f.vence ? `, vence el ${formatearFecha(f.vence)}` : ''}. Gracias.${firma}`
+        : `Hola ${f.cliente}, confirmamos el pago completo de la factura ${f.numero}. Gracias por su confianza.${firma}`;
     if (saldo > 0) {
       // cobro: Claude lo redacta con el tono justo (más firme si ya venció); sin Claude sale la plantilla de arriba
       const { texto, claude } = await redactar(
         db,
         'cobro',
-        { cliente: f.cliente, factura: f.ncf, total: moneda(f.total_cts), saldo: moneda(saldo), vence: f.vence ? formatearFecha(f.vence) : null, estado: vencida ? 'ya venció' : 'al día' },
+        { cliente: f.cliente, factura: f.numero, total: moneda(f.total_cts), saldo: moneda(saldo), vence: f.vence ? formatearFecha(f.vence) : null, estado: vencida ? 'ya venció' : 'al día' },
         mensaje
       );
       return ofrecerWhatsApp(f.telefono, texto, claude);
@@ -188,7 +189,7 @@ export default function Factura() {
     }
     Alert.alert(
       'Anular factura',
-      `¿Anular ${f.ncf}? El NCF queda consumido, el stock de los equipos vuelve al inventario y la factura sale de tus totales. Para volver a facturar, duplica el proyecto.`,
+      `¿Anular la factura ${f.numero}? El NCF queda consumido, el stock de los equipos vuelve al inventario y la factura sale de tus totales. Para volver a facturar, duplica el proyecto.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -235,7 +236,8 @@ export default function Factura() {
       ) : (
         <>
           <Tarjeta style={estilos.grupo}>
-            <Text style={estilos.ncf}>{factura.ncf}</Text>
+            <Text style={estilos.ncf}>{factura.numero}</Text>
+            <Text style={estilos.detalle}>NCF: {factura.ncf}</Text>
             {anulada ? <Text style={estilos.anulada}>ANULADA</Text> : null}
             <Text style={estilos.detalle}>{formatearFecha(factura.creado_en)}</Text>
             <Text style={estilos.nombre}>{factura.cliente}</Text>

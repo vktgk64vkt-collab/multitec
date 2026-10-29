@@ -2,7 +2,13 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { CODIGOS_SQL } from '../nomenclatura';
 
-export const VERSION_ACTUAL = 26;
+export const VERSION_ACTUAL = 27;
+
+// Número de factura propio (F-000001), aparte del NCF: único y consecutivo. El contador vive en `negocio` para que nunca se
+// reutilice, ni siquiera si se borra la última factura. Rellena las facturas que aún no lo tienen (datos y respaldos anteriores).
+export const NUMEROS_FACTURA_SQL = `
+  UPDATE facturas SET numero = 'F-' || printf('%06d', id) WHERE numero IS NULL;
+  UPDATE negocio SET sec_factura = MAX(sec_factura, COALESCE((SELECT MAX(CAST(substr(numero, 3) AS INTEGER)) FROM facturas), 0)) WHERE id = 1;`;
 
 // Marca las partidas que ya tienen su línea en la cotización (datos anteriores a la suma de líneas repetidas).
 export const EN_COTIZACION_SQL = 'UPDATE levantamiento SET en_cotizacion = 1 WHERE id IN (SELECT partida_id FROM cotizacion_items WHERE partida_id IS NOT NULL)';
@@ -349,6 +355,15 @@ async function aplicar(db: SQLiteDatabase, version: number) {
       ALTER TABLE negocio ADD COLUMN margen2_pct REAL NOT NULL DEFAULT 20;
       ALTER TABLE negocio ADD COLUMN margen3_pct REAL NOT NULL DEFAULT 30;
     `);
+  }
+
+  if (version < 27) {
+    await db.execAsync(`
+      ALTER TABLE facturas ADD COLUMN numero TEXT;
+      ALTER TABLE negocio ADD COLUMN sec_factura INTEGER NOT NULL DEFAULT 0;
+    `);
+    await db.execAsync(NUMEROS_FACTURA_SQL);
+    await db.execAsync('CREATE UNIQUE INDEX IF NOT EXISTS idx_facturas_numero ON facturas (numero)');
   }
 
   await db.execAsync(`PRAGMA user_version = ${VERSION_ACTUAL}`);

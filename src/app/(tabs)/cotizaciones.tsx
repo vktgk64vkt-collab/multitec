@@ -10,7 +10,7 @@ import { normalizar } from '@/pedido';
 import { FilaProyecto } from '@/proyectoUi';
 import { PantallaTab } from '@/pestanas';
 import { color } from '@/tema';
-import { Campo, Chip, PROPS_TECLADO } from '@/ui';
+import { Buscador, Chip, PROPS_TECLADO } from '@/ui';
 
 const FILTROS: { id: FiltroProyectos; texto: string }[] = [
   { id: 'activos', texto: 'Por responder' },
@@ -58,7 +58,7 @@ export default function Cotizaciones() {
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View style={{ gap: 10 }}>
-            <Campo placeholder="Buscar por proyecto, cliente o tipo" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
+            <Buscador placeholder="Buscar por proyecto, cliente o tipo" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
             <View style={estilos.filtros}>
               {FILTROS.map((f) => (
                 <Chip key={f.id} texto={f.texto} activo={filtro === f.id} onPress={() => setFiltro(f.id)} />

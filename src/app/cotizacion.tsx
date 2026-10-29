@@ -1,11 +1,11 @@
 import { textoCobro } from '@/cobroAuto';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { AvisoEjecucion, useEjecucionIniciada } from '@/bloqueo';
-import { intentar } from '@/accion';
+import { haptico, intentar } from '@/accion';
 import { Alert } from '@/alert';
 import { revisarCotizacionConClaude } from '@/claude';
 import { obtenerCliente } from '@/db/clientes';
@@ -38,7 +38,7 @@ import { detalleArticulo } from '@/nomenclatura';
 import { agruparPorTrabajo, etiquetaTrabajo, hayVariosTrabajos, limpiarTrabajo, trabajoAuto } from '@/trabajos';
 import { elegirTrabajoDe, SelectorTrabajo } from '@/trabajosUi';
 import { color } from '@/tema';
-import { Boton, Campo, Chip, Etiqueta, FilaAcciones, Tarjeta, PROPS_TECLADO } from '@/ui';
+import { Aparece, Boton, Buscador, Campo, Chip, Desplegable, Etiqueta, FilaAcciones, Icono, Tarjeta, PROPS_TECLADO } from '@/ui';
 
 const SECCIONES: { tipo: TipoItem; titulo: string }[] = [
   { tipo: 'equipo', titulo: 'Equipos' },
@@ -71,6 +71,9 @@ export default function Cotizacion() {
   const [descripcion, setDescripcion] = useState('');
   const [cantidad, setCantidad] = useState('1');
   const [precio, setPrecio] = useState('');
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [abierto, setAbierto] = useState<string | null>(null);
+  const temporizador = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [revisionIA, setRevisionIA] = useState<{ resumen: string; observaciones: Observacion[] } | null>(null);
 
   const cargar = useCallback(
@@ -159,7 +162,11 @@ export default function Cotizacion() {
       detalle: detalleArticulo(p),
       trabajo: trabajo === undefined ? trabajoAuto(p.categoria) : limpiarTrabajo(trabajo),
     });
-    setBusqueda('');
+    // la búsqueda se queda: cada resultado muestra cuántos lleva ya la cotización
+    haptico();
+    setAviso(`Agregado: ${p.nombre}`);
+    clearTimeout(temporizador.current);
+    temporizador.current = setTimeout(() => setAviso(null), 2200);
     cargar();
   }
 
@@ -315,6 +322,35 @@ export default function Cotizacion() {
         </Text>
       )}
 
+      <Tarjeta>
+        <Buscador placeholder="Buscar en el inventario (nombre o código)" value={busqueda} onChangeText={setBusqueda} />
+        {texto && sugerencias.length === 0 ? <Text style={estilos.detalle}>Sin resultados.</Text> : null}
+        {!texto && inventario.length === 0 ? <Text style={estilos.detalle}>El inventario está vacío. Agrégalo en Más, Inventario.</Text> : null}
+        {sugerencias.map((p) => {
+          const lleva = lineas.filter((l) => l.item_id === p.id).reduce((s, l) => s + l.cantidad, 0);
+          return (
+            <Pressable
+              key={p.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Agregar ${p.nombre}`}
+              style={estilos.sugerencia}
+              onPress={() => intentar(() => agregarDelInventario(p))}>
+              <View style={{ flex: 1 }}>
+                <Text style={estilos.nombre}>{p.nombre}</Text>
+                <Text style={estilos.detalle}>
+                  {p.codigo ? `${p.codigo} · ` : ''}
+                  {p.stock !== null ? `stock ${p.stock}` : p.categoria ?? ''}
+                </Text>
+                {lleva > 0 ? <Text style={estilos.enCotizacion}>✓ {lleva} en la cotización</Text> : null}
+              </View>
+              <Text style={estilos.importe}>{formatear(precioParaProyecto(p, nivel, conItbis, pct))}</Text>
+              <Icono nombre="plus.circle.fill" tam={24} tinte={color.primario} />
+            </Pressable>
+          );
+        })}
+        <SelectorTrabajo trabajos={trabajos} valor={trabajo} onElegir={setTrabajo} />
+      </Tarjeta>
+
       {secciones.map(({ clave, titulo, delTipo }) => {
         if (delTipo.length === 0) return null;
         return (
@@ -356,32 +392,7 @@ export default function Cotizacion() {
       {lineas.length > 0 && <Text style={estilos.pista}>Desliza una línea hacia la izquierda para eliminarla.</Text>}
 
       <Tarjeta>
-        <SelectorTrabajo trabajos={trabajos} valor={trabajo} onElegir={setTrabajo} />
-        <Etiqueta>Buscar en el inventario (nombre o código)</Etiqueta>
-        <Campo placeholder="Ej. turret 4MPX o CCTV-0001" value={busqueda} onChangeText={setBusqueda} clearButtonMode="while-editing" autoCorrect={false} />
-        {texto && sugerencias.length === 0 ? <Text style={estilos.detalle}>Sin resultados.</Text> : null}
-        {!texto && inventario.length === 0 ? <Text style={estilos.detalle}>El inventario está vacío. Agrégalo en Más, Inventario.</Text> : null}
-        {sugerencias.map((p) => (
-          <Pressable
-            key={p.id}
-            accessibilityRole="button"
-            accessibilityLabel={`Agregar ${p.nombre}`}
-            style={estilos.sugerencia}
-            onPress={() => intentar(() => agregarDelInventario(p))}>
-            <View style={{ flex: 1 }}>
-              <Text style={estilos.nombre}>{p.nombre}</Text>
-              <Text style={estilos.detalle}>
-                {p.codigo ? `${p.codigo} · ` : ''}
-                {p.stock !== null ? `stock ${p.stock}` : p.categoria ?? ''}
-              </Text>
-            </View>
-            <Text style={estilos.importe}>{formatear(precioParaProyecto(p, nivel, conItbis, pct))}</Text>
-          </Pressable>
-        ))}
-      </Tarjeta>
-
-      <Tarjeta>
-        <Etiqueta>Precios del inventario</Etiqueta>
+        <Desplegable etiqueta="Precios" valor={`Precio ${nivel}${conItbis ? ' · con ITBIS' : ''}`} abierto={abierto === 'precios'} onAlternar={() => setAbierto(abierto === 'precios' ? null : 'precios')}>
         <View style={estilos.chips}>
           {[1, 2, 3].map((n) => (
             <Chip key={n} texto={`Precio ${n}`} activo={nivel === n} onPress={() => cambiarPrecios(n, conItbis)} />
@@ -399,10 +410,11 @@ export default function Cotizacion() {
         {conItbis && pct !== ITBIS_PCT ? (
           <Text style={estilos.aviso}>Impuesto del proyecto: {pct} %. Los precios del inventario se calculan con ese impuesto.</Text>
         ) : null}
+        </Desplegable>
       </Tarjeta>
 
       <Tarjeta>
-        <Etiqueta>Kits (paquetes que se agregan de una vez)</Etiqueta>
+        <Desplegable etiqueta="Kits" valor={kits.length ? `${kits.length} guardados` : 'Ninguno'} abierto={abierto === 'kits'} onAlternar={() => setAbierto(abierto === 'kits' ? null : 'kits')}>
         {kits.length === 0 ? <Text style={estilos.detalle}>Arma la cotización una vez, ponle un nombre abajo y queda como kit para las siguientes.</Text> : null}
         {kits.map((k) => (
           <FilaDeslizable key={k.id} onAccion={() => confirmarEliminarKit(k)}>
@@ -421,10 +433,11 @@ export default function Cotizacion() {
             <Chip borde texto="Guardar kit" onPress={() => intentar(nuevoKit)} />
           </View>
         ) : null}
+        </Desplegable>
       </Tarjeta>
 
       <Tarjeta>
-        <Etiqueta>Agregar línea</Etiqueta>
+        <Desplegable etiqueta="Línea manual" valor="Descripción y precio" abierto={abierto === 'manual'} onAlternar={() => setAbierto(abierto === 'manual' ? null : 'manual')}>
         <View style={estilos.chips}>
           {SECCIONES.map((s) => (
             <Chip key={s.tipo} texto={s.tipo === 'equipo' ? 'Equipo' : 'Servicio'} activo={tipo === s.tipo} onPress={() => setTipo(s.tipo)} />
@@ -436,6 +449,7 @@ export default function Cotizacion() {
           <Campo style={estilos.mitad} placeholder="Precio" keyboardType="decimal-pad" value={precio} onChangeText={setPrecio} />
         </View>
         <Boton texto="Agregar" onPress={agregar} />
+        </Desplegable>
       </Tarjeta>
 
       <Tarjeta>
@@ -492,6 +506,7 @@ export default function Cotizacion() {
         <FilaAcciones
           acciones={[
             { icono: 'square.and.arrow.up', texto: 'PDF', onPress: pdf },
+            { icono: 'doc.text', texto: 'Propuesta', onPress: () => router.push({ pathname: '/propuesta', params: { proyecto: proyectoId } }) },
             { icono: 'sparkles', texto: 'Revisar', onPress: revisar },
             { icono: 'message', texto: 'Seguimiento', onPress: seguimiento },
             { icono: 'checkmark.circle.fill', texto: 'Aprobada', onPress: aprobar, tono: 'ok', principal: true },
@@ -499,6 +514,12 @@ export default function Cotizacion() {
         />
       </Tarjeta>
     </ScrollView>
+    {aviso ? (
+      <Aparece key={aviso + lineas.length} style={estilos.toast}>
+        <Icono nombre="checkmark.circle.fill" tam={20} tinte="#fff" />
+        <Text style={estilos.toastTexto} numberOfLines={2}>{aviso}</Text>
+      </Aparece>
+    ) : null}
     <BotonDictado proyectoId={proyectoId} />
     </View>
   );
@@ -517,6 +538,9 @@ const estilos = StyleSheet.create({
   revision: { fontSize: 14, color: color.texto, borderLeftWidth: 3, paddingLeft: 10, paddingVertical: 2 },
   moverTrabajo: { minHeight: 32, justifyContent: 'center' },
   pista: { fontSize: 12, color: color.suave, textAlign: 'center' },
+  enCotizacion: { fontSize: 13, fontWeight: '600', color: color.ok },
+  toast: { position: 'absolute', left: 16, right: 16, bottom: 24, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderRadius: 14, backgroundColor: color.ok },
+  toastTexto: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '600' },
   vacio: { textAlign: 'center', color: color.suave },
   chips: { gap: 8, flexDirection: 'row', flexWrap: 'wrap' },
   sugerencia: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.borde },
