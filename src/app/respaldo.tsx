@@ -6,6 +6,7 @@ import { ActivityIndicator, Animated, Modal, Pressable, StyleSheet, Text, View }
 
 import { Alert } from '@/alert';
 import { registrarAviso } from '@/avisos';
+import { listarCopias } from '@/copiaAuto';
 import { exportarRespaldo, guardarRespaldoEn, restaurarFotos, restaurarRespaldo, type Avance, type ResultadoRespaldo } from '@/respaldo';
 import { color } from '@/tema';
 
@@ -58,6 +59,10 @@ Código: ${registrarAviso(e, 'respaldo.fotos')}`);
   async function elegirRestaurar() {
     const r = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
     if (r.canceled) return;
+    confirmarRestaurar(r.assets[0].uri);
+  }
+
+  function confirmarRestaurar(uri: string) {
     Alert.alert('Restaurar respaldo', 'Esto reemplaza TODOS los datos actuales por los del archivo. ¿Continuar?', [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -65,7 +70,7 @@ Código: ${registrarAviso(e, 'respaldo.fotos')}`);
         style: 'destructive',
         onPress: async () => {
           try {
-            await restaurarRespaldo(db, r.assets[0].uri);
+            await restaurarRespaldo(db, uri);
             Alert.alert('Listo', 'Datos restaurados.');
           } catch (e) {
             Alert.alert('No se pudo restaurar', `${String(e)}
@@ -105,6 +110,16 @@ Código: ${registrarAviso(e, 'respaldo.restaurar')}`);
       <Pressable accessibilityRole="button" style={[estilos.boton, estilos.secundario]} onPress={fotos}>
         <Text style={[estilos.textoBoton, { color: color.primario }]}>Devolver las fotos desde una carpeta</Text>
       </Pressable>
+      {listarCopias().length > 0 && (
+        <>
+          <Text style={estilos.texto}>Copias automáticas del teléfono (una al día, se guardan las últimas 7, y una antes de cada actualización de la base). Toca una para volver a ese momento.</Text>
+          {listarCopias().map((c) => (
+            <Pressable key={c.name} accessibilityRole="button" style={[estilos.boton, estilos.secundario]} onPress={() => confirmarRestaurar(c.uri)}>
+              <Text style={[estilos.textoBoton, { color: color.primario }]}>{c.name.replace(/^auto-/, '').replace(/\.db$/, '')}</Text>
+            </Pressable>
+          ))}
+        </>
+      )}
       <Pressable accessibilityRole="button" style={[estilos.boton, estilos.peligro]} onPress={elegirRestaurar}>
         <Text style={estilos.textoBoton}>Restaurar desde archivo</Text>
       </Pressable>

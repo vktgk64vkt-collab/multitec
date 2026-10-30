@@ -1,9 +1,15 @@
 import { Stack, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { reporte, type Reporte } from '@/db/reportes';
+import { Alert } from '@/alert';
+import { registrarAviso } from '@/avisos';
+import { ventasCsv } from '@/ventasCsv';
+
+import { reporte, ventasDelAnio, type Reporte } from '@/db/reportes';
 import { formatearFecha, moneda } from '@/dinero';
 import { color } from '@/tema';
 import { Etiqueta, Tarjeta } from '@/ui';
@@ -17,6 +23,23 @@ export default function Reportes() {
       reporte(db).then(setR);
     }, [db])
   );
+
+  async function exportarVentas() {
+    try {
+      const anio = new Date().getFullYear();
+      const filas = await ventasDelAnio(db, anio);
+      if (filas.length === 0) return Alert.alert('Sin facturas', `No hay facturas en ${anio}.`);
+      const f = new File(Paths.cache, `ventas-${anio}.csv`);
+      f.create({ overwrite: true });
+      f.write(ventasCsv(filas));
+      if (!(await Sharing.isAvailableAsync())) return Alert.alert('No disponible', 'Compartir solo funciona en el iPhone.');
+      await Sharing.shareAsync(f.uri, { mimeType: 'text/csv', UTI: 'public.comma-separated-values-text' });
+    } catch (e) {
+      Alert.alert('No se pudo exportar', `${String(e)}
+
+Código: ${registrarAviso(e, 'reportes.ventas')}`);
+    }
+  }
 
   const maxMes = Math.max(1, ...(r?.porMes.map((m) => m.total_cts) ?? []));
 
@@ -49,6 +72,10 @@ export default function Reportes() {
           </View>
         ))}
       </Tarjeta>
+
+      <Pressable accessibilityRole="button" style={estilos.boton} onPress={exportarVentas}>
+        <Text style={estilos.textoBoton}>Enviar ventas del año al contador (CSV)</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -60,5 +87,7 @@ const estilos = StyleSheet.create({
   monto: { fontSize: 15, fontWeight: '700', color: color.texto },
   pista: { height: 8, borderRadius: 4, backgroundColor: color.fondo },
   barra: { height: 8, borderRadius: 4, backgroundColor: color.primario },
+  boton: { padding: 14, borderRadius: 14, backgroundColor: color.primario, alignItems: 'center' },
+  textoBoton: { color: '#fff', fontSize: 16, fontWeight: '600' },
   vacio: { color: color.suave },
 });

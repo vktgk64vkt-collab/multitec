@@ -1,11 +1,12 @@
 import { Stack } from 'expo-router';
-import { SQLiteProvider } from 'expo-sqlite';
+import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
+import { useEffect } from 'react';
 import type { ErrorBoundaryProps } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
 import { registrarAviso } from '@/avisos';
 
-import { migrarBaseDeDatos } from '@/db/migraciones';
+import { copiaDiaria, migrarConCopia } from '@/copiaAuto';
 import { color } from '@/tema';
 
 // fallos que nadie atrapó: quedan en Avisos con su código
@@ -32,9 +33,18 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   );
 }
 
+function CopiaDiaria() {
+  const db = useSQLiteContext();
+  useEffect(() => {
+    copiaDiaria(db);
+  }, [db]);
+  return null;
+}
+
 export default function RootLayout() {
   return (
-    <SQLiteProvider databaseName="multitec.db" onInit={migrarBaseDeDatos}>
+    <SQLiteProvider databaseName="multitec.db" onInit={migrarConCopia}>
+      <CopiaDiaria />
       <Stack screenOptions={{ contentStyle: { backgroundColor: color.fondo }, headerTintColor: color.primario, headerBackButtonDisplayMode: 'minimal' }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="proyecto/nuevo" options={{ title: 'Nuevo levantamiento', presentation: 'modal' }} />
