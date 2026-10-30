@@ -27,8 +27,6 @@ import {
   obtenerOpciones,
   type Linea,
 } from '@/db/cotizacion';
-import { agregarMateriales } from '@/db/materiales';
-import { calcularMateriales, DIAMETROS, type Canalizacion, type Diametro } from '@/materiales';
 import { aplicarKit, eliminarKit, guardarKit, listarKits, type Kit } from '@/db/kits';
 import { listarAreas } from '@/db/levantamiento';
 import { aprobarCotizacion, guardarCondiciones, marcarEnviada, obtenerCondiciones, obtenerProyecto } from '@/db/proyectos';
@@ -62,10 +60,6 @@ export default function Cotizacion() {
   const [trabajos, setTrabajos] = useState<string[]>([]);
   const [trabajo, setTrabajo] = useState<string | undefined>(undefined); // undefined = Auto
   const [nombreKit, setNombreKit] = useState('');
-  const [canal, setCanal] = useState<Canalizacion>('EMT');
-  const [diametro, setDiametro] = useState<Diametro>('3/4');
-  const [metros, setMetros] = useState('');
-  const [esquinas, setEsquinas] = useState('');
   const [descuento, setDescuento] = useState('');
   const [descuentoGuardado, setDescuentoGuardado] = useState(0);
   const [impuesto, setImpuesto] = useState('0');
@@ -195,17 +189,6 @@ export default function Cotizacion() {
   async function usarKit(k: Kit) {
     await aplicarKit(db, k.id, proyectoId);
     cargar();
-  }
-
-  async function materialesPorMedida() {
-    const m = Number(metros.replace(',', '.'));
-    const lista = calcularMateriales(canal, diametro, m, esquinas.trim() === '' ? undefined : Number(esquinas));
-    if (lista.length === 0) return Alert.alert('Falta la medida', 'Escribe los metros del recorrido.');
-    const faltan = await agregarMateriales(db, proyectoId, lista, null);
-    setMetros('');
-    setEsquinas('');
-    cargar();
-    Alert.alert('Materiales agregados', faltan ? `${faltan} no están en tu inventario: quedaron en la cotización sin precio, llénalo ahí.` : 'Se agregaron con los precios de tu inventario. Incluye 10 % de sobrante.');
   }
 
   async function nuevoKit() {
@@ -431,24 +414,13 @@ export default function Cotizacion() {
       </Tarjeta>
 
       <Tarjeta>
-        <Desplegable etiqueta="Materiales por medida" valor="Tubería, abrazaderas, codos" abierto={abierto === 'medida'} onAlternar={() => setAbierto(abierto === 'medida' ? null : 'medida')}>
-          <View style={estilos.dos}>
-            {(['EMT', 'PVC'] as const).map((t) => (
-              <Chip key={t} texto={t} activo={canal === t} onPress={() => setCanal(t)} />
-            ))}
+        <Pressable accessibilityRole="button" accessibilityLabel="Materiales de ferretería" style={estilos.sugerencia} onPress={() => router.push(`/materiales?proyecto=${proyectoId}` as never)}>
+          <View style={{ flex: 1 }}>
+            <Text style={estilos.nombre}>Materiales de ferretería</Text>
+            <Text style={estilos.detalle}>Calcula tubería, accesorios, registros y fijación desde los metros</Text>
           </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {DIAMETROS.map((d) => (
-              <Chip key={d} texto={`${d}"`} activo={diametro === d} onPress={() => setDiametro(d)} />
-            ))}
-          </View>
-          <View style={estilos.dos}>
-            <Campo style={estilos.mitad} placeholder="Metros del recorrido" keyboardType="decimal-pad" value={metros} onChangeText={setMetros} />
-            <Campo style={estilos.mitad} placeholder="Esquinas (vacío = estimar)" keyboardType="number-pad" value={esquinas} onChangeText={setEsquinas} />
-          </View>
-          <Text style={estilos.detalle}>Tubo de 3 m, abrazadera cada 1,5 m, un codo por esquina (o uno cada 5 m) y 10 % de sobrante. Usa tu inventario si el nombre lleva la pieza (tubo, abrazadera, codo, unión), EMT o PVC y el diámetro, por ejemplo «Tubo EMT 3/4 pulg x 3 m». Puedes agregar varias medidas seguidas.</Text>
-          <Chip borde texto="Agregar materiales" onPress={() => intentar(materialesPorMedida)} />
-        </Desplegable>
+          <Text style={estilos.importe}>Abrir</Text>
+        </Pressable>
       </Tarjeta>
 
       <Tarjeta>

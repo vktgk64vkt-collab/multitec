@@ -41,3 +41,19 @@ export async function guardarPosicionMic(p: PosicionMic | null) {
   if (p) await SecureStore.setItemAsync(POS_MIC, JSON.stringify(p));
   else await SecureStore.deleteItemAsync(POS_MIC);
 }
+
+const NEMA = 'materiales_nema';
+
+/** Texto de las medidas NEMA que editó el usuario ("6x6, 8x8..."), o null si usa las de fábrica. */
+export async function leerNemaGuardado(): Promise<string | null> {
+  if (web) return null;
+  try {
+    return (await SecureStore.getItemAsync(NEMA)) || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function guardarNema(texto: string) {
+  if (!web) await SecureStore.setItemAsync(NEMA, texto);
+}

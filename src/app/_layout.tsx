@@ -57,6 +57,7 @@ export default function RootLayout() {
           options={{ title: 'Dictar pedido', presentation: 'formSheet', sheetGrabberVisible: true, sheetAllowedDetents: [0.6, 1], sheetInitialDetentIndex: 0, sheetCornerRadius: 22 }}
         />
         <Stack.Screen name="vista-previa" options={{ title: 'Vista previa' }} />
+        <Stack.Screen name="materiales" options={{ title: 'Materiales de ferretería' }} />
         <Stack.Screen name="asistente" />
         <Stack.Screen name="bitacora" />
         <Stack.Screen name="ejecucion" options={{ title: 'Ejecución' }} />
