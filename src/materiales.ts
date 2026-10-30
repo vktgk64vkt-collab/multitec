@@ -40,7 +40,9 @@ export interface PedidoMateriales {
   letraEsquina?: Letra;
   /** Modelo de los registros de paso automáticos (uno cada 5 tubos) y de los de esquina. */
   modeloPaso?: string;
-  /** Registros que el usuario agrega a mano (finales, o pasos extra). */
+  /** Modelo de los registros de inicio y de final (uno de cada uno por tubería). */
+  modeloExtremos?: string;
+  /** Registros que el usuario agrega a mano: de paso (2 conectores) o de inicio/final extra (1 conector). */
   registros?: RegistroPedido[];
   letras?: Partial<Record<Letra, number>>;
 }
@@ -66,10 +68,10 @@ const entero = (n: number | undefined, defecto: number) => (n !== undefined && N
 
 /**
  * Todo lo que lleva una canalización de `metros`, con 10 % de sobrante:
- * - tubos de 3 m; un registro de paso cada 5 tubos; un coupling por cada empalme entre dos tubos (el empalme donde va un registro no lleva coupling);
+ * - tubos de 3 m; un registro de inicio y uno de final (1 conector cada uno); un registro de paso cada 5 tubos; un coupling por cada empalme entre dos tubos (el empalme donde va un registro no lleva coupling);
  * - abrazadera cada 1,5 m más la del arranque, y cada una con su tarugo y su tornillo;
  * - EMT no lleva codos: la esquina interior se dobla y la exterior lleva una letra o un registro. PVC lleva un codo por esquina;
- * - registro de paso: 2 conectores; registro final: 2 conectores rectos; cada registro, sus tornillos y tarugos;
+ * - registro de paso: 2 conectores; registro de inicio o de final: 1 conector; cada registro, sus tornillos y tarugos;
  * - letras (LB, LL...): un conector por cada entrada.
  */
 export function calcularMateriales(p: PedidoMateriales): Material[] {
@@ -86,6 +88,7 @@ export function calcularMateriales(p: PedidoMateriales): Material[] {
 
   const modeloPaso = p.modeloPaso ?? '4x4';
   const registros: RegistroPedido[] = (p.registros ?? []).filter((r) => r.cantidad > 0).map((r) => ({ ...r }));
+  registros.push({ modelo: p.modeloExtremos ?? modeloPaso, funcion: 'final', cantidad: 2 }); // inicio + final
   const pasosAuto = Math.floor(tubos / TUBOS_ENTRE_REGISTROS) + (conRegistro ? exteriores : 0);
   if (pasosAuto > 0) registros.push({ modelo: modeloPaso, funcion: 'paso', cantidad: pasosAuto });
 
@@ -107,8 +110,7 @@ export function calcularMateriales(p: PedidoMateriales): Material[] {
     { ...base, clave: 'tubo', grupo: 'Tubería', descripcion: `Tubo ${tipo} ${d} x 3 m`, cantidad: tubos, todas: ['tubo', tipo.toLowerCase()] },
     { ...base, clave: 'coupling', grupo: 'Accesorios', descripcion: `Coupling ${tipo} ${d}`, cantidad: Math.max(0, tubos - 1 - nPaso), todas: [tipo.toLowerCase()], alguna: ['coupling', 'union'] },
     { ...base, clave: 'codo', grupo: 'Accesorios', descripcion: `Codo ${tipo} ${d}`, cantidad: codos, todas: ['codo', tipo.toLowerCase()] },
-    { ...base, clave: 'conector', grupo: 'Accesorios', descripcion: `Conector ${tipo} ${d}`, cantidad: nPaso * 2 + entradasLetras, todas: ['conector', tipo.toLowerCase()], excluir: ['recto'] },
-    { ...base, clave: 'conector-recto', grupo: 'Accesorios', descripcion: `Conector recto ${tipo} ${d}`, cantidad: nFinal * 2, todas: ['conector', 'recto', tipo.toLowerCase()] },
+    { ...base, clave: 'conector', grupo: 'Accesorios', descripcion: `Conector ${tipo} ${d}`, cantidad: nPaso * 2 + nFinal + entradasLetras, todas: ['conector', tipo.toLowerCase()] },
     { ...base, clave: 'abrazadera', grupo: 'Fijación', descripcion: `Abrazadera ${tipo} ${d}`, cantidad: abrazaderas, todas: ['abrazadera', tipo.toLowerCase()] },
     { clave: 'tarugo', grupo: 'Fijación', descripcion: 'Tarugo', cantidad: fijaciones, todas: ['tarugo'] },
     { clave: 'tornillo', grupo: 'Fijación', descripcion: 'Tornillo para abrazadera y registro', cantidad: fijaciones, todas: ['tornillo'] },

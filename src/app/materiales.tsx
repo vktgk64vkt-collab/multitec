@@ -48,6 +48,7 @@ export default function Materiales() {
   const [nemaTipo, setNemaTipo] = useState<string | null>(null);
   const [nemaMedida, setNemaMedida] = useState('12x12');
   const [pasoSel, setPasoSel] = useState<string>('4x4'); // modelo de los registros de paso automáticos
+  const [extremoSel, setExtremoSel] = useState<string>('4x4'); // modelo de los registros de inicio y final
   const [funcion, setFuncion] = useState<RegistroPedido['funcion']>('final');
   const [cantRegistro, setCantRegistro] = useState('1');
   const [registros, setRegistros] = useState<RegistroPedido[]>([]);
@@ -72,10 +73,11 @@ export default function Materiales() {
         exterior,
         letraEsquina,
         modeloPaso: pasoSel.startsWith('NEMA') ? `${pasoSel} ${nemaMedida}` : pasoSel,
+        modeloExtremos: extremoSel.startsWith('NEMA') ? `${extremoSel} ${nemaMedida}` : extremoSel,
         registros,
         letras: Object.fromEntries(Object.entries(letras).map(([l, n]) => [l, entero(n ?? '')])),
       }),
-    [canal, diametro, metros, interiores, exteriores, exterior, letraEsquina, pasoSel, nemaMedida, registros, letras]
+    [canal, diametro, metros, interiores, exteriores, exterior, letraEsquina, pasoSel, extremoSel, nemaMedida, registros, letras]
   );
   const cantidadDe = (f: Material) => {
     const c = cambios[f.clave];
@@ -151,14 +153,20 @@ export default function Materiales() {
 
       <Etiqueta>Registros</Etiqueta>
       <Tarjeta>
-        <Text style={estilos.nota}>Los registros de paso salen solos (uno cada 5 tubos) con el modelo que elijas aquí; lleva 2 conectores. Un registro final lleva 2 conectores rectos: agrégalos abajo. Cada registro lleva tornillos y tarugos.</Text>
+        <Text style={estilos.nota}>Cada tubería lleva un registro de inicio y uno de final (1 conector cada uno) y uno de paso cada 5 tubos (2 conectores). Salen solos con el modelo que elijas. Cada registro lleva tornillos y tarugos.</Text>
+        <Text style={estilos.nota}>Registros de inicio y final:</Text>
+        <View style={estilos.fila}>
+          {[...REGISTROS, ...NEMA_TIPOS.map((t) => `NEMA ${t}`)].map((m) => (
+            <Chip key={m} texto={m} activo={extremoSel === m} onPress={() => setExtremoSel(m)} />
+          ))}
+        </View>
         <Text style={estilos.nota}>Registro de paso:</Text>
         <View style={estilos.fila}>
           {[...REGISTROS, ...NEMA_TIPOS.map((t) => `NEMA ${t}`)].map((m) => (
             <Chip key={m} texto={m} activo={pasoSel === m} onPress={() => setPasoSel(m)} />
           ))}
         </View>
-        <Text style={estilos.nota}>Agregar un registro a mano (final, o de paso extra):</Text>
+        <Text style={estilos.nota}>Agregar más registros a mano (de inicio/final, o de paso extra):</Text>
         <View style={estilos.fila}>
           {REGISTROS.map((r) => (
             <Chip key={r} texto={r} activo={!nemaTipo && modelo === r} onPress={() => { setNemaTipo(null); setModelo(r); }} />
@@ -167,7 +175,7 @@ export default function Materiales() {
             <Chip key={t} texto={`NEMA ${t}`} activo={nemaTipo === t} onPress={() => setNemaTipo(t)} />
           ))}
         </View>
-        {nemaTipo || pasoSel.startsWith('NEMA') ? (
+        {nemaTipo || pasoSel.startsWith('NEMA') || extremoSel.startsWith('NEMA') ? (
           <View style={estilos.fila}>
             {medidasNema.map((m) => (
               <Chip key={m} texto={m} activo={nemaMedida === m} onPress={() => setNemaMedida(m)} />
@@ -175,7 +183,7 @@ export default function Materiales() {
           </View>
         ) : null}
         <View style={estilos.fila}>
-          <Chip texto="Final" activo={funcion === 'final'} onPress={() => setFuncion('final')} />
+          <Chip texto="Inicio/final" activo={funcion === 'final'} onPress={() => setFuncion('final')} />
           <Chip texto="De paso" activo={funcion === 'paso'} onPress={() => setFuncion('paso')} />
         </View>
         <View style={estilos.dos}>
@@ -185,7 +193,7 @@ export default function Materiales() {
         {registros.map((r, i) => (
           <View key={i} style={estilos.dos}>
             <Text style={estilos.texto}>
-              {r.cantidad} × Registro {r.modelo} · {r.funcion === 'paso' ? 'de paso' : 'final'}
+              {r.cantidad} × Registro {r.modelo} · {r.funcion === 'paso' ? 'de paso' : 'inicio/final'}
             </Text>
             <Chip borde texto="Quitar" onPress={() => setRegistros((l) => l.filter((_, j) => j !== i))} />
           </View>
