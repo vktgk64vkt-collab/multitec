@@ -28,7 +28,7 @@ import {
   type Linea,
 } from '@/db/cotizacion';
 import { agregarMateriales } from '@/db/materiales';
-import { calcularMateriales, type Canalizacion } from '@/materiales';
+import { calcularMateriales, DIAMETROS, type Canalizacion, type Diametro } from '@/materiales';
 import { aplicarKit, eliminarKit, guardarKit, listarKits, type Kit } from '@/db/kits';
 import { listarAreas } from '@/db/levantamiento';
 import { aprobarCotizacion, guardarCondiciones, marcarEnviada, obtenerCondiciones, obtenerProyecto } from '@/db/proyectos';
@@ -63,6 +63,7 @@ export default function Cotizacion() {
   const [trabajo, setTrabajo] = useState<string | undefined>(undefined); // undefined = Auto
   const [nombreKit, setNombreKit] = useState('');
   const [canal, setCanal] = useState<Canalizacion>('EMT');
+  const [diametro, setDiametro] = useState<Diametro>('3/4');
   const [metros, setMetros] = useState('');
   const [esquinas, setEsquinas] = useState('');
   const [descuento, setDescuento] = useState('');
@@ -198,7 +199,7 @@ export default function Cotizacion() {
 
   async function materialesPorMedida() {
     const m = Number(metros.replace(',', '.'));
-    const lista = calcularMateriales(canal, m, esquinas.trim() === '' ? undefined : Number(esquinas));
+    const lista = calcularMateriales(canal, diametro, m, esquinas.trim() === '' ? undefined : Number(esquinas));
     if (lista.length === 0) return Alert.alert('Falta la medida', 'Escribe los metros del recorrido.');
     const faltan = await agregarMateriales(db, proyectoId, lista, null);
     setMetros('');
@@ -436,11 +437,16 @@ export default function Cotizacion() {
               <Chip key={t} texto={t} activo={canal === t} onPress={() => setCanal(t)} />
             ))}
           </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {DIAMETROS.map((d) => (
+              <Chip key={d} texto={`${d}"`} activo={diametro === d} onPress={() => setDiametro(d)} />
+            ))}
+          </View>
           <View style={estilos.dos}>
             <Campo style={estilos.mitad} placeholder="Metros del recorrido" keyboardType="decimal-pad" value={metros} onChangeText={setMetros} />
             <Campo style={estilos.mitad} placeholder="Esquinas (vacío = estimar)" keyboardType="number-pad" value={esquinas} onChangeText={setEsquinas} />
           </View>
-          <Text style={estilos.detalle}>Tubo de 3 m, abrazadera cada 1,5 m, un codo por esquina (o uno cada 5 m) y 10 % de sobrante. Usa tu inventario si tiene «tubo», «abrazadera», «codo» y «unión» con EMT o PVC en el nombre.</Text>
+          <Text style={estilos.detalle}>Tubo de 3 m, abrazadera cada 1,5 m, un codo por esquina (o uno cada 5 m) y 10 % de sobrante. Usa tu inventario si el nombre lleva la pieza (tubo, abrazadera, codo, unión), EMT o PVC y el diámetro, por ejemplo «Tubo EMT 3/4 pulg x 3 m». Puedes agregar varias medidas seguidas.</Text>
           <Chip borde texto="Agregar materiales" onPress={() => intentar(materialesPorMedida)} />
         </Desplegable>
       </Tarjeta>

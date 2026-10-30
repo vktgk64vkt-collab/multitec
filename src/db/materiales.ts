@@ -1,11 +1,9 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { precioParaProyecto } from '../dinero';
-import type { Material } from '../materiales';
+import { coincide, type Material } from '../materiales';
 import { listarCatalogo } from './catalogo';
 import { crearLinea, obtenerOpciones } from './cotizacion';
-
-const sinAcentos = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /**
  * Agrega los materiales a la cotización. Si el inventario tiene un artículo cuyo nombre lleva todas las palabras del
@@ -13,11 +11,11 @@ const sinAcentos = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toL
  */
 export async function agregarMateriales(db: SQLiteDatabase, proyectoId: number, materiales: Material[], trabajo: string | null) {
   const op = await obtenerOpciones(db, proyectoId);
-  const inventario = (await listarCatalogo(db)).map((p) => ({ p, nombre: sinAcentos(p.nombre) }));
+  const inventario = (await listarCatalogo(db)).map((p) => ({ p, nombre: p.nombre }));
   let sinInventario = 0;
   await db.withTransactionAsync(async () => {
     for (const m of materiales) {
-      const hit = inventario.find((x) => m.palabras.every((w) => x.nombre.includes(w)));
+      const hit = inventario.find((x) => coincide(x.nombre, m));
       if (!hit) sinInventario++;
       await crearLinea(db, proyectoId, {
         descripcion: hit ? hit.p.nombre : m.descripcion,
