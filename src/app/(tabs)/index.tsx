@@ -27,7 +27,7 @@ export default function Inicio() {
   const [cargado, setCargado] = useState(false);
   const [porResponder, setPorResponder] = useState(0);
   const [sinRespuesta, setSinRespuesta] = useState(0);
-  const [cobros, setCobros] = useState({ por_cobrar: 0, cobrado_mes: 0 });
+  const [cobros, setCobros] = useState({ por_cobrar: 0, cobrado_mes: 0, vencido: 0 });
   const [sinRespaldo, setSinRespaldo] = useState<number | null | undefined>(undefined);
   const [empresa, setEmpresa] = useState<Negocio | null | undefined>(undefined);
 
@@ -106,6 +106,14 @@ export default function Inicio() {
                   {plural(porResponder, 'cotización', 'cotizaciones')} {porResponder === 1 ? 'espera' : 'esperan'} respuesta
                   {sinRespuesta > 0 ? ` · ${sinRespuesta} sin respuesta hace más de 7 días` : ''}
                 </Text>
+                <Icono nombre="chevron.right" tam={13} tinte={color.primario} />
+              </Pressable>
+            </Link>
+          ) : null}
+          {cobros.vencido > 0 ? (
+            <Link href="/facturas" asChild>
+              <Pressable accessibilityRole="button" style={[estilos.aviso, { borderLeftColor: color.peligro }]}>
+                <Text style={estilos.textoAviso}>Facturas vencidas sin cobrar: {moneda(cobros.vencido)}</Text>
                 <Icono nombre="chevron.right" tam={13} tinte={color.primario} />
               </Pressable>
             </Link>
