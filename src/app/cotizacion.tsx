@@ -27,6 +27,8 @@ import {
   obtenerOpciones,
   type Linea,
 } from '@/db/cotizacion';
+import { agregarMateriales } from '@/db/materiales';
+import { calcularMateriales, type Canalizacion } from '@/materiales';
 import { aplicarKit, eliminarKit, guardarKit, listarKits, type Kit } from '@/db/kits';
 import { listarAreas } from '@/db/levantamiento';
 import { aprobarCotizacion, guardarCondiciones, marcarEnviada, obtenerCondiciones, obtenerProyecto } from '@/db/proyectos';
@@ -60,6 +62,9 @@ export default function Cotizacion() {
   const [trabajos, setTrabajos] = useState<string[]>([]);
   const [trabajo, setTrabajo] = useState<string | undefined>(undefined); // undefined = Auto
   const [nombreKit, setNombreKit] = useState('');
+  const [canal, setCanal] = useState<Canalizacion>('EMT');
+  const [metros, setMetros] = useState('');
+  const [esquinas, setEsquinas] = useState('');
   const [descuento, setDescuento] = useState('');
   const [descuentoGuardado, setDescuentoGuardado] = useState(0);
   const [impuesto, setImpuesto] = useState('0');
@@ -189,6 +194,17 @@ export default function Cotizacion() {
   async function usarKit(k: Kit) {
     await aplicarKit(db, k.id, proyectoId);
     cargar();
+  }
+
+  async function materialesPorMedida() {
+    const m = Number(metros.replace(',', '.'));
+    const lista = calcularMateriales(canal, m, esquinas.trim() === '' ? undefined : Number(esquinas));
+    if (lista.length === 0) return Alert.alert('Falta la medida', 'Escribe los metros del recorrido.');
+    const faltan = await agregarMateriales(db, proyectoId, lista, null);
+    setMetros('');
+    setEsquinas('');
+    cargar();
+    Alert.alert('Materiales agregados', faltan ? `${faltan} no están en tu inventario: quedaron en la cotización sin precio, llénalo ahí.` : 'Se agregaron con los precios de tu inventario. Incluye 10 % de sobrante.');
   }
 
   async function nuevoKit() {
@@ -410,6 +426,22 @@ export default function Cotizacion() {
         {conItbis && pct !== ITBIS_PCT ? (
           <Text style={estilos.aviso}>Impuesto del proyecto: {pct} %. Los precios del inventario se calculan con ese impuesto.</Text>
         ) : null}
+        </Desplegable>
+      </Tarjeta>
+
+      <Tarjeta>
+        <Desplegable etiqueta="Materiales por medida" valor="Tubería, abrazaderas, codos" abierto={abierto === 'medida'} onAlternar={() => setAbierto(abierto === 'medida' ? null : 'medida')}>
+          <View style={estilos.dos}>
+            {(['EMT', 'PVC'] as const).map((t) => (
+              <Chip key={t} texto={t} activo={canal === t} onPress={() => setCanal(t)} />
+            ))}
+          </View>
+          <View style={estilos.dos}>
+            <Campo style={estilos.mitad} placeholder="Metros del recorrido" keyboardType="decimal-pad" value={metros} onChangeText={setMetros} />
+            <Campo style={estilos.mitad} placeholder="Esquinas (vacío = estimar)" keyboardType="number-pad" value={esquinas} onChangeText={setEsquinas} />
+          </View>
+          <Text style={estilos.detalle}>Tubo de 3 m, abrazadera cada 1,5 m, un codo por esquina (o uno cada 5 m) y 10 % de sobrante. Usa tu inventario si tiene «tubo», «abrazadera», «codo» y «unión» con EMT o PVC en el nombre.</Text>
+          <Chip borde texto="Agregar materiales" onPress={() => intentar(materialesPorMedida)} />
         </Desplegable>
       </Tarjeta>
 
