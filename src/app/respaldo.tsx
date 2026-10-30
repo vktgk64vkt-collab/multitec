@@ -15,6 +15,7 @@ export default function Respaldo() {
   const [progreso, setProgreso] = useState<{ texto: string } | null>(null);
   const [barra] = useState(() => new Animated.Value(0));
   const avance: Avance = (texto, fraccion) => {
+    if (fraccion < 0) return setProgreso(null);
     setProgreso({ texto });
     Animated.timing(barra, { toValue: fraccion, duration: 250, useNativeDriver: false }).start();
   };
@@ -22,7 +23,7 @@ export default function Respaldo() {
   /** Corre el respaldo con la ventana de progreso y, al terminar bien, dice qué se guardó. */
   async function conProgreso(origen: string, hacer: (a: Avance) => Promise<ResultadoRespaldo | false | null>) {
     barra.setValue(0);
-    setProgreso({ texto: 'Empezando…' });
+    // sin ventana aún: el selector de carpetas de iOS no puede abrirse encima de un Modal
     try {
       const r = await hacer(avance);
       setProgreso(null);
