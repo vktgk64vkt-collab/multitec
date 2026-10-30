@@ -58,8 +58,13 @@ export async function guardarRespaldoEn(db: SQLite.SQLiteDatabase, avance?: Avan
   await respirar();
   const nombre = nombreRespaldo();
   const datos = await db.serializeAsync();
-  const archivo = carpeta.createFile(nombre, 'application/octet-stream');
-  archivo.write(datos);
+  // se arma primero en la caché (ahí siempre se puede escribir) y se copia a la carpeta elegida, igual que las fotos
+  const temporal = new File(Paths.cache, nombre);
+  temporal.create({ overwrite: true });
+  temporal.write(datos);
+  temporal.copySync(carpeta);
+  temporal.delete();
+  const archivo = new File(carpeta, nombre);
   if (!archivo.exists || archivo.size !== datos.length) throw new Error('El archivo del respaldo no quedó completo en esa carpeta. Elige otra carpeta (por ejemplo En mi iPhone o iCloud Drive).');
   avance?.('Base de datos guardada', 0.4);
   // las fotos van en una carpeta junto al respaldo: sin ellas, al restaurar quedan imágenes en blanco

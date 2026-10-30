@@ -2,6 +2,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
+import { registrarAviso } from '@/avisos';
 import { migrarBaseDeDatos, VERSION_ACTUAL } from '@/db/migraciones';
 
 const CONSERVAR = 7;
@@ -27,7 +28,10 @@ async function copiar(db: SQLite.SQLiteDatabase, etiqueta: string) {
   dir.create({ idempotent: true, intermediates: true });
   const sello = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
   const f = new File(dir, `auto-${sello}-${etiqueta}.db`);
-  f.write(await db.serializeAsync());
+  const datos = await db.serializeAsync();
+  f.create({ overwrite: true }); // write() no crea el archivo
+  f.write(datos);
+  if (f.size !== datos.length) throw new Error('La copia automática quedó incompleta');
   for (const n of sobrantes(listarCopias().map((x) => x.name))) new File(dir, n).delete();
 }
 
@@ -38,8 +42,8 @@ export async function copiaDiaria(db: SQLite.SQLiteDatabase) {
     const hoy = new Date().toISOString().slice(0, 10);
     if (listarCopias().some((f) => f.name.startsWith(`auto-${hoy}`))) return;
     await copiar(db, `v${VERSION_ACTUAL}`);
-  } catch {
-    // sin espacio o sin permiso: la app sigue funcionando sin copia
+  } catch (e) {
+    registrarAviso(e, 'copia.diaria'); // la app sigue funcionando sin copia, pero el fallo queda en Avisos
   }
 }
 
@@ -49,8 +53,8 @@ export async function migrarConCopia(db: SQLite.SQLiteDatabase) {
     try {
       const v = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
       if (v && v.user_version > 0 && v.user_version < VERSION_ACTUAL) await copiar(db, `antes-de-v${VERSION_ACTUAL}`);
-    } catch {
-      // ver arriba
+    } catch (e) {
+      registrarAviso(e, 'copia.antes-de-migrar');
     }
   }
   await migrarBaseDeDatos(db);
