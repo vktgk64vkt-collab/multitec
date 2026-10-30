@@ -8,14 +8,14 @@ import { guardarNema, leerNemaGuardado } from '@/ajustes';
 import { agregarMateriales } from '@/db/materiales';
 import {
   calcularMateriales,
-  CONDULETAS,
+  LETRAS,
   DIAMETROS,
   leerMedidasNema,
   NEMA_MEDIDAS,
   NEMA_TIPOS,
   REGISTROS,
   type Canalizacion,
-  type Conduleta,
+  type Letra,
   type Diametro,
   type Material,
   type RegistroPedido,
@@ -23,7 +23,7 @@ import {
 import { color } from '@/tema';
 import { Boton, Campo, Chip, Etiqueta, PROPS_TECLADO, Tarjeta } from '@/ui';
 
-const GRUPOS: Material['grupo'][] = ['Tubería', 'Accesorios', 'Fijación', 'Registros', 'Conduletas'];
+const GRUPOS: Material['grupo'][] = ['Tubería', 'Accesorios', 'Fijación', 'Registros', 'Letras'];
 const entero = (t: string) => Math.max(0, Math.floor(Number(t.replace(',', '.')) || 0));
 
 /** Calcula todo el material de ferretería de una canalización y deja revisarlo antes de pasarlo a la cotización. */
@@ -34,7 +34,10 @@ export default function Materiales() {
   const [canal, setCanal] = useState<Canalizacion>('EMT');
   const [diametro, setDiametro] = useState<Diametro>('3/4');
   const [metros, setMetros] = useState('');
-  const [esquinas, setEsquinas] = useState('');
+  const [interiores, setInteriores] = useState('');
+  const [exteriores, setExteriores] = useState('');
+  const [exterior, setExterior] = useState<'letra' | 'registro'>('letra');
+  const [letraEsquina, setLetraEsquina] = useState<Letra>('LB');
 
   const [nemaTexto, setNemaTexto] = useState(NEMA_MEDIDAS.join(', '));
   const medidasNema = useMemo(() => {
@@ -44,10 +47,11 @@ export default function Materiales() {
   const [modelo, setModelo] = useState<string>('4x4');
   const [nemaTipo, setNemaTipo] = useState<string | null>(null);
   const [nemaMedida, setNemaMedida] = useState('12x12');
-  const [funcion, setFuncion] = useState<RegistroPedido['funcion']>('paso');
+  const [pasoSel, setPasoSel] = useState<string>('4x4'); // modelo de los registros de paso automáticos
+  const [funcion, setFuncion] = useState<RegistroPedido['funcion']>('final');
   const [cantRegistro, setCantRegistro] = useState('1');
   const [registros, setRegistros] = useState<RegistroPedido[]>([]);
-  const [conduletas, setConduletas] = useState<Partial<Record<Conduleta, string>>>({});
+  const [letras, setLetras] = useState<Partial<Record<Letra, string>>>({});
 
   // cantidades que el usuario corrigió a mano; valen mientras el cálculo no cambie
   const [cambios, setCambios] = useState<Record<string, { base: number; valor: string }>>({});
@@ -63,11 +67,15 @@ export default function Materiales() {
         tipo: canal,
         diametro,
         metros: Number(metros.replace(',', '.')),
-        esquinas: esquinas.trim() === '' ? undefined : entero(esquinas),
+        esquinasInteriores: entero(interiores),
+        esquinasExteriores: entero(exteriores),
+        exterior,
+        letraEsquina,
+        modeloPaso: pasoSel.startsWith('NEMA') ? `${pasoSel} ${nemaMedida}` : pasoSel,
         registros,
-        conduletas: Object.fromEntries(Object.entries(conduletas).map(([l, n]) => [l, entero(n ?? '')])),
+        letras: Object.fromEntries(Object.entries(letras).map(([l, n]) => [l, entero(n ?? '')])),
       }),
-    [canal, diametro, metros, esquinas, registros, conduletas]
+    [canal, diametro, metros, interiores, exteriores, exterior, letraEsquina, pasoSel, nemaMedida, registros, letras]
   );
   const cantidadDe = (f: Material) => {
     const c = cambios[f.clave];
@@ -115,16 +123,42 @@ export default function Materiales() {
             <Chip key={d} texto={`${d}"`} activo={diametro === d} onPress={() => setDiametro(d)} />
           ))}
         </View>
+        <Campo placeholder="Metros del recorrido" keyboardType="decimal-pad" value={metros} onChangeText={setMetros} />
         <View style={estilos.dos}>
-          <Campo style={estilos.mitad} placeholder="Metros" keyboardType="decimal-pad" value={metros} onChangeText={setMetros} />
-          <Campo style={estilos.mitad} placeholder="Esquinas (vacío = estimar)" keyboardType="number-pad" value={esquinas} onChangeText={setEsquinas} />
+          <Campo style={estilos.mitad} placeholder="Esquinas interiores" keyboardType="number-pad" value={interiores} onChangeText={setInteriores} />
+          <Campo style={estilos.mitad} placeholder="Esquinas exteriores" keyboardType="number-pad" value={exteriores} onChangeText={setExteriores} />
         </View>
-        <Text style={estilos.nota}>Tubo de 3 m con 10 % de sobrante, un coupling por empalme, abrazadera cada 1,5 m (con tarugo y tornillo) y un codo por esquina.</Text>
+        {canal === 'EMT' ? (
+          <>
+            <Text style={estilos.nota}>En EMT las esquinas interiores se doblan (sin accesorio). Las exteriores llevan:</Text>
+            <View style={estilos.fila}>
+              <Chip texto="Letra" activo={exterior === 'letra'} onPress={() => setExterior('letra')} />
+              <Chip texto="Registro" activo={exterior === 'registro'} onPress={() => setExterior('registro')} />
+            </View>
+            {exterior === 'letra' ? (
+              <View style={estilos.fila}>
+                {(Object.keys(LETRAS) as Letra[]).map((l) => (
+                  <Chip key={l} texto={l} activo={letraEsquina === l} onPress={() => setLetraEsquina(l)} />
+                ))}
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <Text style={estilos.nota}>En PVC cada esquina lleva un codo.</Text>
+        )}
+        <Text style={estilos.nota}>Tubo de 3 m con 10 % de sobrante, un coupling por empalme, un registro de paso cada 5 tubos y abrazadera cada 1,5 m (con tarugo y tornillo).</Text>
       </Tarjeta>
 
       <Etiqueta>Registros</Etiqueta>
       <Tarjeta>
-        <Text style={estilos.nota}>De paso: 2 conectores. Final: 2 conectores rectos. Cada registro lleva sus tornillos y tarugos.</Text>
+        <Text style={estilos.nota}>Los registros de paso salen solos (uno cada 5 tubos) con el modelo que elijas aquí; lleva 2 conectores. Un registro final lleva 2 conectores rectos: agrégalos abajo. Cada registro lleva tornillos y tarugos.</Text>
+        <Text style={estilos.nota}>Registro de paso:</Text>
+        <View style={estilos.fila}>
+          {[...REGISTROS, ...NEMA_TIPOS.map((t) => `NEMA ${t}`)].map((m) => (
+            <Chip key={m} texto={m} activo={pasoSel === m} onPress={() => setPasoSel(m)} />
+          ))}
+        </View>
+        <Text style={estilos.nota}>Agregar un registro a mano (final, o de paso extra):</Text>
         <View style={estilos.fila}>
           {REGISTROS.map((r) => (
             <Chip key={r} texto={r} activo={!nemaTipo && modelo === r} onPress={() => { setNemaTipo(null); setModelo(r); }} />
@@ -133,7 +167,7 @@ export default function Materiales() {
             <Chip key={t} texto={`NEMA ${t}`} activo={nemaTipo === t} onPress={() => setNemaTipo(t)} />
           ))}
         </View>
-        {nemaTipo ? (
+        {nemaTipo || pasoSel.startsWith('NEMA') ? (
           <View style={estilos.fila}>
             {medidasNema.map((m) => (
               <Chip key={m} texto={m} activo={nemaMedida === m} onPress={() => setNemaMedida(m)} />
@@ -141,8 +175,8 @@ export default function Materiales() {
           </View>
         ) : null}
         <View style={estilos.fila}>
-          <Chip texto="De paso" activo={funcion === 'paso'} onPress={() => setFuncion('paso')} />
           <Chip texto="Final" activo={funcion === 'final'} onPress={() => setFuncion('final')} />
+          <Chip texto="De paso" activo={funcion === 'paso'} onPress={() => setFuncion('paso')} />
         </View>
         <View style={estilos.dos}>
           <Campo style={estilos.mitad} placeholder="Cantidad" keyboardType="number-pad" value={cantRegistro} onChangeText={setCantRegistro} />
@@ -161,14 +195,14 @@ export default function Materiales() {
         <Chip borde texto="Guardar medidas NEMA" onPress={guardarNemaEditado} />
       </Tarjeta>
 
-      <Etiqueta>Conduletas</Etiqueta>
+      <Etiqueta>Letras</Etiqueta>
       <Tarjeta>
-        <Text style={estilos.nota}>Cada conduleta suma un conector por entrada (LB, LL, LR, C: 2; T: 3; E: 1; X: 4).</Text>
+        <Text style={estilos.nota}>Letras extra, además de las de las esquinas. Cada letra suma un conector por entrada (LB, LL, LR, C: 2; T: 3; E: 1; X: 4).</Text>
         <View style={estilos.fila}>
-          {(Object.keys(CONDULETAS) as Conduleta[]).map((l) => (
+          {(Object.keys(LETRAS) as Letra[]).map((l) => (
             <View key={l} style={estilos.letra}>
               <Text style={estilos.texto}>{l}</Text>
-              <Campo style={{ minWidth: 56 }} placeholder="0" keyboardType="number-pad" value={conduletas[l] ?? ''} onChangeText={(t) => setConduletas((c) => ({ ...c, [l]: t }))} />
+              <Campo style={{ minWidth: 56 }} placeholder="0" keyboardType="number-pad" value={letras[l] ?? ''} onChangeText={(t) => setLetras((c) => ({ ...c, [l]: t }))} />
             </View>
           ))}
         </View>

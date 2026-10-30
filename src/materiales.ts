@@ -6,9 +6,9 @@ export type Diametro = (typeof DIAMETROS)[number];
 
 export const DESPERDICIO = 0.1;
 export const ABRAZADERA_CADA_M = 1.5;
-export const CODO_CADA_M = 5; // esquinas estimadas si no se indican
 // shortcut: tubo fijo de 3 m para todos los diámetros, cambiar si un suplidor vende otro largo
 export const LARGO_TUBO_M = 3;
+export const TUBOS_ENTRE_REGISTROS = 5; // un registro de paso cada 5 tubos
 export const FIJACIONES_POR_REGISTRO = 2; // tornillos y tarugos con que se fija cada registro (editable en la lista antes de agregar)
 
 /** Registros cuadrados de uso general. */
@@ -17,9 +17,9 @@ export const REGISTROS = ['2x4', '4x4', '5x5'] as const;
 export const NEMA_MEDIDAS = ['6x6', '8x8', '10x10', '12x12', '14x14', '16x16', '18x18', '20x20'];
 export const NEMA_TIPOS = ['1', '3'] as const;
 
-/** Conduletas por letra y por cuántas entradas de tubo lleva cada una (cada entrada, un conector). */
-export const CONDULETAS = { LB: 2, LL: 2, LR: 2, C: 2, T: 3, E: 1, X: 4 } as const;
-export type Conduleta = keyof typeof CONDULETAS;
+/** Letras (conduletas) y por cuántas entradas de tubo lleva cada una (cada entrada, un conector). */
+export const LETRAS = { LB: 2, LL: 2, LR: 2, C: 2, T: 3, E: 1, X: 4 } as const;
+export type Letra = keyof typeof LETRAS;
 
 export interface RegistroPedido {
   /** "2x4", "4x4", "5x5" o "NEMA 1 12x12" / "NEMA 3 12x12" */
@@ -32,9 +32,17 @@ export interface PedidoMateriales {
   tipo: Canalizacion;
   diametro: Diametro;
   metros: number;
-  esquinas?: number;
+  /** Esquinas interiores: el tubo EMT se dobla, sin accesorio. En PVC llevan codo. */
+  esquinasInteriores?: number;
+  /** Esquinas exteriores: en EMT llevan letra o registro (según `exterior`); en PVC, codo. */
+  esquinasExteriores?: number;
+  exterior?: 'letra' | 'registro';
+  letraEsquina?: Letra;
+  /** Modelo de los registros de paso automáticos (uno cada 5 tubos) y de los de esquina. */
+  modeloPaso?: string;
+  /** Registros que el usuario agrega a mano (finales, o pasos extra). */
   registros?: RegistroPedido[];
-  conduletas?: Partial<Record<Conduleta, number>>;
+  letras?: Partial<Record<Letra, number>>;
 }
 
 export interface Material {
@@ -42,7 +50,7 @@ export interface Material {
   clave: string;
   descripcion: string;
   cantidad: number;
-  grupo: 'Tubería' | 'Accesorios' | 'Registros' | 'Conduletas' | 'Fijación';
+  grupo: 'Tubería' | 'Accesorios' | 'Registros' | 'Letras' | 'Fijación';
   /** Para encontrarlo en el inventario: todas estas palabras, al menos una de `alguna`, ninguna de `excluir`. */
   todas: string[];
   alguna?: string[];
@@ -50,7 +58,7 @@ export interface Material {
   diametro?: Diametro;
   /** Medida del registro ("2x4"), sin espacios. */
   medida?: string;
-  /** Letra de la conduleta, como palabra completa. */
+  /** Letra (LB, LL...), como palabra completa. */
   letra?: string;
 }
 
@@ -58,33 +66,48 @@ const entero = (n: number | undefined, defecto: number) => (n !== undefined && N
 
 /**
  * Todo lo que lleva una canalización de `metros`, con 10 % de sobrante:
- * - tubos de 3 m; un coupling (unión) por cada empalme entre dos tubos;
+ * - tubos de 3 m; un registro de paso cada 5 tubos; un coupling por cada empalme entre dos tubos (el empalme donde va un registro no lleva coupling);
  * - abrazadera cada 1,5 m más la del arranque, y cada una con su tarugo y su tornillo;
- * - un codo por esquina (si no se indican, uno cada 5 m);
- * - registro de paso: 2 conectores; registro final: 2 conectores rectos; cada registro, sus tornillos y tarugos de fijación;
- * - conduletas (LB, LL...): un conector por cada entrada.
+ * - EMT no lleva codos: la esquina interior se dobla y la exterior lleva una letra o un registro. PVC lleva un codo por esquina;
+ * - registro de paso: 2 conectores; registro final: 2 conectores rectos; cada registro, sus tornillos y tarugos;
+ * - letras (LB, LL...): un conector por cada entrada.
  */
 export function calcularMateriales(p: PedidoMateriales): Material[] {
   if (!Number.isFinite(p.metros) || p.metros <= 0) return [];
   const { tipo, diametro } = p;
+  const emt = tipo === 'EMT';
   const d = `${diametro}"`;
   const tubos = Math.ceil((p.metros * (1 + DESPERDICIO)) / LARGO_TUBO_M);
   const abrazaderas = Math.ceil(p.metros / ABRAZADERA_CADA_M) + 1;
-  const codos = entero(p.esquinas, Math.floor(p.metros / CODO_CADA_M));
-  const registros = (p.registros ?? []).filter((r) => r.cantidad > 0);
+  const interiores = entero(p.esquinasInteriores, 0);
+  const exteriores = entero(p.esquinasExteriores, 0);
+  const conLetra = emt && (p.exterior ?? 'letra') === 'letra';
+  const conRegistro = emt && !conLetra;
+
+  const modeloPaso = p.modeloPaso ?? '4x4';
+  const registros: RegistroPedido[] = (p.registros ?? []).filter((r) => r.cantidad > 0).map((r) => ({ ...r }));
+  const pasosAuto = Math.floor(tubos / TUBOS_ENTRE_REGISTROS) + (conRegistro ? exteriores : 0);
+  if (pasosAuto > 0) registros.push({ modelo: modeloPaso, funcion: 'paso', cantidad: pasosAuto });
+
+  const letras: Partial<Record<Letra, number>> = { ...p.letras };
+  if (conLetra && exteriores > 0) {
+    const l = p.letraEsquina ?? 'LB';
+    letras[l] = entero(letras[l], 0) + exteriores;
+  }
   const nRegistros = registros.reduce((s, r) => s + r.cantidad, 0);
   const nPaso = registros.filter((r) => r.funcion === 'paso').reduce((s, r) => s + r.cantidad, 0);
   const nFinal = nRegistros - nPaso;
-  const conduletas = (Object.keys(CONDULETAS) as Conduleta[]).map((l) => [l, entero(p.conduletas?.[l], 0)] as const).filter(([, n]) => n > 0);
-  const entradasConduletas = conduletas.reduce((s, [l, n]) => s + n * CONDULETAS[l], 0);
+  const listaLetras = (Object.keys(LETRAS) as Letra[]).map((l) => [l, entero(letras[l], 0)] as const).filter(([, n]) => n > 0);
+  const entradasLetras = listaLetras.reduce((s, [l, n]) => s + n * LETRAS[l], 0);
   const fijaciones = abrazaderas + nRegistros * FIJACIONES_POR_REGISTRO;
+  const codos = emt ? 0 : interiores + exteriores;
 
   const base = { diametro };
   const filas: Material[] = [
     { ...base, clave: 'tubo', grupo: 'Tubería', descripcion: `Tubo ${tipo} ${d} x 3 m`, cantidad: tubos, todas: ['tubo', tipo.toLowerCase()] },
-    { ...base, clave: 'coupling', grupo: 'Accesorios', descripcion: `Coupling ${tipo} ${d}`, cantidad: tubos - 1, todas: [tipo.toLowerCase()], alguna: ['coupling', 'union'] },
+    { ...base, clave: 'coupling', grupo: 'Accesorios', descripcion: `Coupling ${tipo} ${d}`, cantidad: Math.max(0, tubos - 1 - nPaso), todas: [tipo.toLowerCase()], alguna: ['coupling', 'union'] },
     { ...base, clave: 'codo', grupo: 'Accesorios', descripcion: `Codo ${tipo} ${d}`, cantidad: codos, todas: ['codo', tipo.toLowerCase()] },
-    { ...base, clave: 'conector', grupo: 'Accesorios', descripcion: `Conector ${tipo} ${d}`, cantidad: nPaso * 2 + entradasConduletas, todas: ['conector', tipo.toLowerCase()], excluir: ['recto'] },
+    { ...base, clave: 'conector', grupo: 'Accesorios', descripcion: `Conector ${tipo} ${d}`, cantidad: nPaso * 2 + entradasLetras, todas: ['conector', tipo.toLowerCase()], excluir: ['recto'] },
     { ...base, clave: 'conector-recto', grupo: 'Accesorios', descripcion: `Conector recto ${tipo} ${d}`, cantidad: nFinal * 2, todas: ['conector', 'recto', tipo.toLowerCase()] },
     { ...base, clave: 'abrazadera', grupo: 'Fijación', descripcion: `Abrazadera ${tipo} ${d}`, cantidad: abrazaderas, todas: ['abrazadera', tipo.toLowerCase()] },
     { clave: 'tarugo', grupo: 'Fijación', descripcion: 'Tarugo', cantidad: fijaciones, todas: ['tarugo'] },
@@ -102,8 +125,8 @@ export function calcularMateriales(p: PedidoMateriales): Material[] {
       medida: nema ? nema[2] : r.modelo,
     });
   }
-  for (const [l, n] of conduletas) {
-    filas.push({ ...base, clave: `conduleta-${l}`, grupo: 'Conduletas', descripcion: `Conduleta ${l} ${tipo} ${d}`, cantidad: n, todas: ['conduleta', tipo.toLowerCase()], letra: l.toLowerCase() });
+  for (const [l, n] of listaLetras) {
+    filas.push({ ...base, clave: `letra-${l}`, grupo: 'Letras', descripcion: `Letra ${l} ${tipo} ${d}`, cantidad: n, todas: [tipo.toLowerCase()], alguna: ['letra', 'conduleta'], letra: l.toLowerCase() });
   }
   // un mismo registro en paso y en final es una sola línea de inventario
   const unidas = new Map<string, Material>();
