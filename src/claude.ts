@@ -83,7 +83,7 @@ export async function guardarModoEntender(modo: ModoEntender) {
 export const clavePartida = (clave: string) => `${clave.slice(0, 7)}…${clave.slice(-4)}`;
 
 /** Llama a la API y devuelve el cuerpo ya leído; traduce los errores a frases que el usuario entienda. */
-async function llamar(clave: string, cuerpo: object): Promise<any> {
+async function llamar(clave: string, cuerpo: object, intento = 0): Promise<any> {
   const control = new AbortController();
   const reloj = setTimeout(() => control.abort(), ESPERA_MAX_MS);
   let respuesta: Response;
@@ -105,6 +105,11 @@ async function llamar(clave: string, cuerpo: object): Promise<any> {
   }
 
   const datos = await respuesta.json().catch(() => null);
+  // saturado o muchas peticiones: una sola repetición tras una pausa corta evita pedirle al usuario que reintente
+  if ((respuesta.status === 429 || respuesta.status >= 500) && intento < 1) {
+    await new Promise((r) => setTimeout(r, 3000));
+    return llamar(clave, cuerpo, intento + 1);
+  }
   if (!respuesta.ok) {
     const detalle: string = datos?.error?.message ?? '';
     if (respuesta.status === 401) throw new Error('La clave de API no es válida. Revísala en Más, Asistente Claude.');
